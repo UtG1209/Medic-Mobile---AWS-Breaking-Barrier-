@@ -48,10 +48,11 @@ test("PDF goes upload -> S3 event -> queue -> extract -> digest -> logic model",
   assert.equal(g.pages, 2);
   assert.deepEqual(g.steps.map(s => s.state), ["done", "done", "done", "done", "done"]);
 
-  const env = await (await fetch(`${base}/guidelines/${id}/logic-model`)).json() as { source: string; quoteCheck: { found: number; total: number }; model: { questions: Record<string, unknown> } };
+  const env = await (await fetch(`${base}/guidelines/${id}/logic-model`)).json() as { format: string; source: string; summary: Record<string, number>; model: { pathway: string } };
+  assert.equal(env.format, "logic-tree/2.0");
   assert.equal(env.source, "placeholder");
-  assert.ok(Object.keys(env.model.questions).length > 0);
-  assert.deepEqual([env.quoteCheck.found, env.quoteCheck.total], [8, 8]);
+  assert.equal(env.model.pathway, "Child cough and fast breathing");
+  assert.deepEqual(env.summary, { inputs: 20, derived: 3, nodes: 6, leaves: 7, actions: 7, flags: 11 });
 
   const digest = await (await fetch(`${base}/guidelines/${id}/digest`)).json() as { stats: { blocks: number } };
   assert.ok(digest.stats.blocks > 10);

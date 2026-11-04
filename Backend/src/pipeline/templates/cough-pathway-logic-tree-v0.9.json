@@ -1,0 +1,891 @@
+{
+  "schema_version": "2.0",
+  "pathway": "Child cough and fast breathing",
+  "guideline": "WHO/UNICEF iCCM Chart Booklet for the Community Health Worker, adaptation for high HIV or TB settings (July 2014)",
+  "logic_model_version": "v0.9 (draft, unsigned)",
+  "inputs": [
+    {
+      "id": "visit_date",
+      "booklet_text": "Date: __/__/20__",
+      "type": "date",
+      "auto": true,
+      "source": "p14 (p14-ocr01)",
+      "flags": []
+    },
+    {
+      "id": "age_months",
+      "booklet_text": "Age: __Years/__Months",
+      "type": "integer",
+      "unit": "months",
+      "source": "p3 (p3-b08); p14 (p14-ocr01)",
+      "flags": [
+        "A2",
+        "A8"
+      ]
+    },
+    {
+      "id": "cough",
+      "booklet_text": "Cough?",
+      "type": "yes_no",
+      "source": "p5 (p5-b03); p14 (p14-ocr04)",
+      "flags": []
+    },
+    {
+      "id": "cough_days",
+      "booklet_text": "If yes, for how long? ____days",
+      "type": "integer",
+      "unit": "days",
+      "asked_when": {
+        "field": "cough",
+        "op": "=",
+        "value": "yes"
+      },
+      "source": "p5 (p5-b03); p14 (p14-ocr04)",
+      "flags": [
+        "A8"
+      ]
+    },
+    {
+      "id": "diarrhoea",
+      "booklet_text": "Diarrhoea (3 or more loose stools in last 24 hours)?",
+      "type": "yes_no",
+      "source": "p5 (p5-b04); p14 (p14-ocr05)",
+      "flags": [
+        "A6"
+      ]
+    },
+    {
+      "id": "diarrhoea_days",
+      "booklet_text": "If yes, for how long? ____days.",
+      "type": "integer",
+      "unit": "days",
+      "asked_when": {
+        "field": "diarrhoea",
+        "op": "=",
+        "value": "yes"
+      },
+      "source": "p5 (p5-b04, p5-b05); p14 (p14-ocr05)",
+      "flags": [
+        "A6",
+        "A8"
+      ]
+    },
+    {
+      "id": "blood_in_stool",
+      "booklet_text": "If diarrhoea, blood in stool?",
+      "type": "yes_no",
+      "asked_when": {
+        "field": "diarrhoea",
+        "op": "=",
+        "value": "yes"
+      },
+      "source": "p5 (p5-b06); p14 (p14-ocr05)",
+      "flags": [
+        "A6"
+      ]
+    },
+    {
+      "id": "fever",
+      "booklet_text": "Fever (reported or now)?",
+      "type": "yes_no",
+      "source": "p5 (p5-b07); p14 (p14-ocr05)",
+      "flags": [
+        "A6"
+      ]
+    },
+    {
+      "id": "fever_days",
+      "booklet_text": "If yes, started ____ days ago.",
+      "type": "integer",
+      "unit": "days",
+      "asked_when": {
+        "field": "fever",
+        "op": "=",
+        "value": "yes"
+      },
+      "source": "p5 (p5-b07, p5-b08); p14 (p14-ocr06)",
+      "flags": [
+        "A6",
+        "A8"
+      ]
+    },
+    {
+      "id": "convulsions",
+      "booklet_text": "Convulsions?",
+      "type": "yes_no",
+      "source": "p5 (p5-b09); p14 (p14-ocr06)",
+      "flags": []
+    },
+    {
+      "id": "difficulty_drinking_or_feeding",
+      "booklet_text": "Difficulty drinking or feeding?",
+      "type": "yes_no",
+      "source": "p5 (p5-b10); p14 (p14-ocr09)",
+      "flags": []
+    },
+    {
+      "id": "not_able_to_drink_or_feed_anything",
+      "booklet_text": "If yes, not able to drink or feed anything?",
+      "type": "yes_no",
+      "asked_when": {
+        "field": "difficulty_drinking_or_feeding",
+        "op": "=",
+        "value": "yes"
+      },
+      "source": "p5 (p5-b10, p5-b11); p14 (p14-ocr09)",
+      "flags": [
+        "A4"
+      ]
+    },
+    {
+      "id": "vomiting",
+      "booklet_text": "Vomiting?",
+      "type": "yes_no",
+      "source": "p5 (p5-b12); p14 (p14-ocr09)",
+      "flags": []
+    },
+    {
+      "id": "vomits_everything",
+      "booklet_text": "If yes, vomits everything?",
+      "type": "yes_no",
+      "asked_when": {
+        "field": "vomiting",
+        "op": "=",
+        "value": "yes"
+      },
+      "source": "p5 (p5-b12); p14 (p14-ocr09)",
+      "flags": [
+        "A4"
+      ]
+    },
+    {
+      "id": "has_hiv",
+      "booklet_text": "Has HIV?",
+      "type": "yes_no",
+      "source": "p5 (p5-b13); p14 (p14-ocr09)",
+      "flags": [
+        "A6"
+      ]
+    },
+    {
+      "id": "chest_indrawing",
+      "booklet_text": "Chest indrawing?",
+      "type": "yes_no",
+      "source": "p5 (p5-b23); p14 (p14-ocr13)",
+      "flags": []
+    },
+    {
+      "id": "breaths_per_minute",
+      "booklet_text": "If cough, count breaths in 1 minute: ___ breaths per minute (bpm)",
+      "type": "integer",
+      "unit": "breaths per minute",
+      "asked_when": {
+        "field": "cough",
+        "op": "=",
+        "value": "yes"
+      },
+      "source": "p5 (p5-b24, p5-b25); p14 (p14-ocr14)",
+      "flags": [
+        "A7",
+        "A8"
+      ]
+    },
+    {
+      "id": "unusually_sleepy_or_unconscious",
+      "booklet_text": "Unusually sleepy or unconscious?",
+      "type": "yes_no",
+      "source": "p5 (p5-b26); p14 (p14-ocr15)",
+      "flags": []
+    },
+    {
+      "id": "muac_colour",
+      "booklet_text": "For child age 6 months up to 5 years, MUAC strap colour",
+      "type": "choice",
+      "options": [
+        "red",
+        "yellow",
+        "green"
+      ],
+      "asked_when": {
+        "field": "age_months",
+        "op": ">=",
+        "value": 6
+      },
+      "source": "p5 (p5-b27, p5-b28); p14 (p14-ocr19)",
+      "flags": [
+        "A6"
+      ]
+    },
+    {
+      "id": "swelling_of_both_feet",
+      "booklet_text": "Swelling of both feet?",
+      "type": "yes_no",
+      "source": "p5 (p5-b29); p14 (p14-ocr18)",
+      "flags": [
+        "A6"
+      ]
+    }
+  ],
+  "external_dates": [
+    {
+      "id": "return_date",
+      "description": "The date a referred child returns from the health facility. Not asked on this form; the follow-up on return counts from it.",
+      "source": "p7 (p7-b47, p7-b48); p15 (p15-ocr16)",
+      "flags": [
+        "A11"
+      ]
+    }
+  ],
+  "derived": [
+    {
+      "id": "age_band",
+      "type": "choice",
+      "options": [
+        "2_to_11m",
+        "12_to_59m",
+        "out_of_scope"
+      ],
+      "logic": {
+        "cases": [
+          {
+            "when": {
+              "all": [
+                {
+                  "field": "age_months",
+                  "op": ">=",
+                  "value": 2
+                },
+                {
+                  "field": "age_months",
+                  "op": "<",
+                  "value": 12
+                }
+              ]
+            },
+            "value": "2_to_11m"
+          },
+          {
+            "when": {
+              "all": [
+                {
+                  "field": "age_months",
+                  "op": ">=",
+                  "value": 12
+                },
+                {
+                  "field": "age_months",
+                  "op": "<",
+                  "value": 60
+                }
+              ]
+            },
+            "value": "12_to_59m"
+          }
+        ],
+        "otherwise": "out_of_scope"
+      },
+      "source": "p3 (p3-b08); p8 (p8-b20, p8-b22)",
+      "flags": [
+        "A2",
+        "A3"
+      ]
+    },
+    {
+      "id": "fast_breathing",
+      "type": "yes_no",
+      "logic": {
+        "any": [
+          {
+            "all": [
+              {
+                "field": "age_band",
+                "op": "=",
+                "value": "2_to_11m"
+              },
+              {
+                "field": "breaths_per_minute",
+                "op": ">=",
+                "value": 50
+              }
+            ]
+          },
+          {
+            "all": [
+              {
+                "field": "age_band",
+                "op": "=",
+                "value": "12_to_59m"
+              },
+              {
+                "field": "breaths_per_minute",
+                "op": ">=",
+                "value": 40
+              }
+            ]
+          }
+        ]
+      },
+      "source": "p8 (p8-b19 to p8-b23); p14 (p14-ocr14)",
+      "flags": [
+        "A3",
+        "A7"
+      ]
+    },
+    {
+      "id": "any_danger_sign",
+      "type": "yes_no",
+      "danger_signs": [
+        {
+          "id": "ds01",
+          "booklet_text": "Cough for 14 days or more",
+          "logic": {
+            "all": [
+              {
+                "field": "cough",
+                "op": "=",
+                "value": "yes"
+              },
+              {
+                "field": "cough_days",
+                "op": ">=",
+                "value": 14
+              }
+            ]
+          },
+          "source": "p6 (p6-b12); p7 (p7-b23)",
+          "flags": []
+        },
+        {
+          "id": "ds02",
+          "booklet_text": "Diarrhoea for 14 days or more",
+          "logic": {
+            "all": [
+              {
+                "field": "diarrhoea",
+                "op": "=",
+                "value": "yes"
+              },
+              {
+                "field": "diarrhoea_days",
+                "op": ">=",
+                "value": 14
+              }
+            ]
+          },
+          "source": "p6 (p6-b13); p7 (p7-b24)",
+          "flags": [
+            "A6"
+          ]
+        },
+        {
+          "id": "ds03",
+          "booklet_text": "Blood in stool",
+          "logic": {
+            "field": "blood_in_stool",
+            "op": "=",
+            "value": "yes"
+          },
+          "source": "p6 (p6-b14); p7 (p7-b25)",
+          "flags": [
+            "A6"
+          ]
+        },
+        {
+          "id": "ds04",
+          "booklet_text": "Fever for last 7 days or more",
+          "logic": {
+            "all": [
+              {
+                "field": "fever",
+                "op": "=",
+                "value": "yes"
+              },
+              {
+                "field": "fever_days",
+                "op": ">=",
+                "value": 7
+              }
+            ]
+          },
+          "source": "p6 (p6-b15); p7 (p7-b26)",
+          "flags": [
+            "A6"
+          ]
+        },
+        {
+          "id": "ds05",
+          "booklet_text": "Convulsions",
+          "logic": {
+            "field": "convulsions",
+            "op": "=",
+            "value": "yes"
+          },
+          "source": "p6 (p6-b16); p7 (p7-b27)",
+          "flags": []
+        },
+        {
+          "id": "ds06",
+          "booklet_text": "Not able to drink or feed anything",
+          "logic": {
+            "field": "not_able_to_drink_or_feed_anything",
+            "op": "=",
+            "value": "yes"
+          },
+          "source": "p6 (p6-b17, p6-b18); p7 (p7-b28)",
+          "flags": []
+        },
+        {
+          "id": "ds07",
+          "booklet_text": "Vomits everything",
+          "logic": {
+            "field": "vomits_everything",
+            "op": "=",
+            "value": "yes"
+          },
+          "source": "p6 (p6-b19); p7 (p7-b30)",
+          "flags": []
+        },
+        {
+          "id": "ds08",
+          "booklet_text": "Has HIV and any other illness",
+          "source": "p6 (p6-b20); p7 (p7-b31)",
+          "flags": [
+            "A6"
+          ]
+        },
+        {
+          "id": "ds09",
+          "booklet_text": "Chest indrawing",
+          "logic": {
+            "field": "chest_indrawing",
+            "op": "=",
+            "value": "yes"
+          },
+          "source": "p6 (p6-b23); p7 (p7-b32)",
+          "flags": []
+        },
+        {
+          "id": "ds10",
+          "booklet_text": "Unusually sleepy or unconscious",
+          "logic": {
+            "field": "unusually_sleepy_or_unconscious",
+            "op": "=",
+            "value": "yes"
+          },
+          "source": "p6 (p6-b24, p6-b25); p7 (p7-b33)",
+          "flags": []
+        },
+        {
+          "id": "ds11",
+          "booklet_text": "For child age 6 months up to 5 years, Red on MUAC strap",
+          "logic": {
+            "all": [
+              {
+                "field": "age_months",
+                "op": ">=",
+                "value": 6
+              },
+              {
+                "field": "muac_colour",
+                "op": "=",
+                "value": "red"
+              }
+            ]
+          },
+          "source": "p6 (p6-b26 to p6-b28); p7 (p7-b34 to p7-b36)",
+          "flags": [
+            "A6"
+          ]
+        },
+        {
+          "id": "ds12",
+          "booklet_text": "For child age 6 months up to 5 years, Yellow on MUAC strap and has HIV",
+          "logic": {
+            "all": [
+              {
+                "field": "age_months",
+                "op": ">=",
+                "value": 6
+              },
+              {
+                "field": "muac_colour",
+                "op": "=",
+                "value": "yellow"
+              },
+              {
+                "field": "has_hiv",
+                "op": "=",
+                "value": "yes"
+              }
+            ]
+          },
+          "source": "p6 (p6-b26, p6-b30 to p6-b32); p7 (p7-b37, p7-b38)",
+          "flags": [
+            "A6"
+          ]
+        },
+        {
+          "id": "ds13",
+          "booklet_text": "Swelling of both feet",
+          "logic": {
+            "field": "swelling_of_both_feet",
+            "op": "=",
+            "value": "yes"
+          },
+          "source": "p6 (p6-b33, p6-b34); p7 (p7-b39)",
+          "flags": [
+            "A6"
+          ]
+        }
+      ],
+      "source": "p6 (p6-b21, p6-b22)",
+      "flags": [
+        "A6"
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "id": "REFER",
+      "category": "referral",
+      "booklet_text": "Assist referral to health facility: Explain why child needs to go to the health facility. Write a referral note. Arrange transportation, and help solve other difficulties in referral.",
+      "due_at": {
+        "from": "visit_date",
+        "add_days": 0
+      },
+      "source": "p7 (p7-b22, p7-b04, p7-b44, p7-b45, p7-b46); p15 (p15-ocr05, p15-ocr06, p15-ocr14, p15-ocr15)",
+      "flags": []
+    },
+    {
+      "id": "AMOX_FIRST_DOSE",
+      "category": "medicine",
+      "booklet_text": "If fast breathing or chest indrawing, give first dose of oral antibiotic (amoxycillin tablet—250 mg): Age 2 months up to 12 months—1 tablet; Age 12 months up to 5 years—2 tablets",
+      "medicine": "amoxycillin tablet—250 mg",
+      "dose": {
+        "selected_by": "age_band",
+        "values": {
+          "2_to_11m": {
+            "booklet_text": "1 tablet",
+            "tablets": 1
+          },
+          "12_to_59m": {
+            "booklet_text": "2 tablets",
+            "tablets": 2
+          }
+        }
+      },
+      "pending_condition": {
+        "any": [
+          {
+            "field": "difficulty_drinking_or_feeding",
+            "op": "=",
+            "value": "no"
+          },
+          {
+            "field": "not_able_to_drink_or_feed_anything",
+            "op": "=",
+            "value": "no"
+          }
+        ]
+      },
+      "due_at": {
+        "from": "visit_date",
+        "add_days": 0
+      },
+      "source": "p7 (p7-b18 to p7-b21); p15 (p15-ocr11)",
+      "flags": [
+        "A3",
+        "A4"
+      ]
+    },
+    {
+      "id": "AMOX_HOME",
+      "category": "medicine",
+      "booklet_text": "Give oral antibiotic (amoxycillin tablet—250 mg ). Give twice daily for 5 days: Age 2 months up to 12 months—1 tablet (total 10 tabs); Age 12 months up to 5 years—2 tablets (total 20 tabs). Help caregiver give first dose now.",
+      "medicine": "amoxycillin tablet—250 mg",
+      "dose": {
+        "selected_by": "age_band",
+        "times_per_day": 2,
+        "days": 5,
+        "values": {
+          "2_to_11m": {
+            "booklet_text": "1 tablet (total 10 tabs)",
+            "tablets": 1
+          },
+          "12_to_59m": {
+            "booklet_text": "2 tablets (total 20 tabs)",
+            "tablets": 2
+          }
+        }
+      },
+      "due_at": {
+        "from": "visit_date",
+        "add_days": 0
+      },
+      "source": "p9 (p9-b27 to p9-b31); p11 (p11-b38); p15 (p15-ocr33)",
+      "flags": [
+        "A3"
+      ]
+    },
+    {
+      "id": "REFERRAL_ADVICE",
+      "category": "advice",
+      "booklet_text": "For any sick child who can drink, advise to give fluids and continue feeding. Advise to keep child warm, if child is NOT hot with fever.",
+      "due_at": {
+        "from": "visit_date",
+        "add_days": 0
+      },
+      "source": "p7 (p7-b40 to p7-b43); p15 (p15-ocr12, p15-ocr13)",
+      "flags": []
+    },
+    {
+      "id": "HOME_CARE_ADVICE",
+      "category": "advice",
+      "booklet_text": "For ALL children treated at home, advise on home care: Advise the caregiver to give more fluids and continue feeding. Advise on when to return. Go to nearest health facility or, if not possible, return immediately if child: Cannot drink or feed; Becomes sicker; Has blood in stool. Advise caregiver on use of a bednet (ITN).",
+      "due_at": {
+        "from": "visit_date",
+        "add_days": 0
+      },
+      "source": "p9 (p9-b45 to p9-b64); p15 (p15-ocr28, p15-ocr35 to p15-ocr38)",
+      "flags": [
+        "A10"
+      ]
+    },
+    {
+      "id": "FOLLOW_UP_ON_RETURN",
+      "category": "follow_up",
+      "booklet_text": "FOLLOW UP child on return at least once a week until child is well.",
+      "due_at": {
+        "from": "return_date",
+        "add_days": 0,
+        "repeat_every_days": 7,
+        "until": "child is well"
+      },
+      "source": "p7 (p7-b47, p7-b48); p15 (p15-ocr16)",
+      "flags": [
+        "A9",
+        "A11"
+      ]
+    },
+    {
+      "id": "FOLLOW_UP_3_DAYS",
+      "category": "follow_up",
+      "booklet_text": "Follow up child in 3 days. If child becomes sicker or does not improve REFER CHILD URGENTLY TO HEALTH FACILITY. At follow up: Child is better—continue to treat at home. Child is not better—refer URGENTLY to health facility. Child has danger sign—refer URGENTLY to health facility.",
+      "due_at": {
+        "from": "visit_date",
+        "add_days": 3
+      },
+      "source": "p3 (p3-b15 to p3-b23); p9 (p9-b65 to p9-b70); p15 (p15-ocr38, p15-ocr46, p15-ocr47)",
+      "flags": [
+        "A9"
+      ]
+    }
+  ],
+  "tree": {
+    "node": "n1",
+    "question": "Is the child age 2 months up to 5 years?",
+    "check": {
+      "field": "age_band",
+      "op": "in",
+      "value": [
+        "2_to_11m",
+        "12_to_59m"
+      ]
+    },
+    "yes": {
+      "node": "n2",
+      "question": "Any danger sign?",
+      "check": {
+        "field": "any_danger_sign",
+        "op": "=",
+        "value": "yes"
+      },
+      "yes": {
+        "node": "n3",
+        "question": "Fast breathing?",
+        "check": {
+          "field": "fast_breathing",
+          "op": "=",
+          "value": "yes"
+        },
+        "yes": {
+          "leaf": "R02",
+          "decision": "refer urgently",
+          "actions": [
+            "REFER",
+            "AMOX_FIRST_DOSE",
+            "REFERRAL_ADVICE",
+            "FOLLOW_UP_ON_RETURN"
+          ],
+          "source": "p6 (p6-b10, p6-b11); p7 (p7-b02, p7-b18 to p7-b21, p7-b40 to p7-b48)",
+          "flags": [
+            "A3",
+            "A4"
+          ]
+        },
+        "no": {
+          "node": "n4",
+          "question": "Chest indrawing?",
+          "check": {
+            "field": "chest_indrawing",
+            "op": "=",
+            "value": "yes"
+          },
+          "yes": {
+            "leaf": "R03",
+            "decision": "refer urgently",
+            "actions": [
+              "REFER",
+              "AMOX_FIRST_DOSE",
+              "REFERRAL_ADVICE",
+              "FOLLOW_UP_ON_RETURN"
+            ],
+            "source": "p6 (p6-b10, p6-b11, p6-b23); p7 (p7-b02, p7-b18 to p7-b21, p7-b40 to p7-b48)",
+            "flags": [
+              "A4"
+            ]
+          },
+          "no": {
+            "leaf": "R04",
+            "decision": "refer urgently",
+            "actions": [
+              "REFER",
+              "REFERRAL_ADVICE",
+              "FOLLOW_UP_ON_RETURN"
+            ],
+            "source": "p6 (p6-b10, p6-b11); p7 (p7-b02, p7-b40 to p7-b48)",
+            "flags": []
+          }
+        }
+      },
+      "no": {
+        "node": "n5",
+        "question": "Fast breathing?",
+        "check": {
+          "field": "fast_breathing",
+          "op": "=",
+          "value": "yes"
+        },
+        "yes": {
+          "leaf": "R05",
+          "decision": "treat at home",
+          "actions": [
+            "AMOX_HOME",
+            "HOME_CARE_ADVICE",
+            "FOLLOW_UP_3_DAYS"
+          ],
+          "source": "p8 (p8-b02 to p8-b04, p8-b19 to p8-b23); p9 (p9-b24 to p9-b31, p9-b45 to p9-b70)",
+          "flags": [
+            "A3"
+          ]
+        },
+        "no": {
+          "node": "n6",
+          "question": "Cough?",
+          "check": {
+            "field": "cough",
+            "op": "=",
+            "value": "yes"
+          },
+          "yes": {
+            "leaf": "R06",
+            "decision": "treat at home",
+            "actions": [
+              "HOME_CARE_ADVICE",
+              "FOLLOW_UP_3_DAYS"
+            ],
+            "source": "p8 (p8-b11); p9 (p9-b45 to p9-b70)",
+            "flags": [
+              "A1"
+            ]
+          },
+          "no": {
+            "leaf": "R07",
+            "decision": "exit pathway",
+            "actions": [],
+            "source": "none (catch-all, team proposal)",
+            "flags": [
+              "A12"
+            ]
+          }
+        }
+      }
+    },
+    "no": {
+      "leaf": "R01",
+      "actions": [],
+      "source": "p3 (p3-b08)",
+      "flags": [
+        "A2"
+      ]
+    }
+  },
+  "flags": [
+    {
+      "id": "A1",
+      "kind": "blocking",
+      "issue": "Cough under 14 days without fast breathing is listed as sick, no danger sign, but has no treatment row.",
+      "pages": "p8, p9"
+    },
+    {
+      "id": "A2",
+      "kind": "blocking",
+      "issue": "Children outside 2 months up to 5 years are not covered. How should the form handle them? (BRD OQ-03)",
+      "pages": "p3"
+    },
+    {
+      "id": "A3",
+      "kind": "note",
+      "issue": "12 months appears in both age bands (50 and 40 bpm). Which band applies at exactly 12 months?",
+      "pages": "p8"
+    },
+    {
+      "id": "A4",
+      "kind": "blocking",
+      "issue": "Pre-referral amoxicillin: page 7 has no drinking condition; the recording form adds 'if child can drink'.",
+      "pages": "p7, p15"
+    },
+    {
+      "id": "A6",
+      "kind": "blocking",
+      "issue": "Pathway boundary: does the cough form ask every danger-sign question, including other pathways'? What counts as 'any other illness' for HIV?",
+      "pages": "p6, p8, p9"
+    },
+    {
+      "id": "A7",
+      "kind": "note",
+      "issue": "Breaths are counted only if cough. Should fast breathing be checked without cough?",
+      "pages": "p5, p14"
+    },
+    {
+      "id": "A8",
+      "kind": "note",
+      "issue": "Entry limits for age, days and breaths per minute are not in the guideline (BR-13).",
+      "pages": ""
+    },
+    {
+      "id": "A9",
+      "kind": "note",
+      "issue": "The guideline gives follow-up due dates but no task window.",
+      "pages": "p7, p9"
+    },
+    {
+      "id": "A10",
+      "kind": "note",
+      "issue": "Return advice differs: page 9 says go to the nearest health facility or, if not possible, return immediately; the recording form says go to the nearest health facility immediately or, if not possible, return.",
+      "pages": "p9, p15"
+    },
+    {
+      "id": "A11",
+      "kind": "note",
+      "issue": "A referred child is followed up on return, but the guideline gives no date for the return and the first-visit form cannot know it. How does the CHT learn that the child has returned (return_date)?",
+      "pages": "p7, p15"
+    },
+    {
+      "id": "A12",
+      "kind": "proposal",
+      "issue": "R07 (exit pathway when there is no danger sign, no fast breathing and no cough) is a catch-all the team added so every case has an outcome; the guideline has no such row.",
+      "pages": ""
+    }
+  ]
+}

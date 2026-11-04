@@ -1,32 +1,73 @@
 import { z } from "zod";
 
-/* Zod mirror of the logic model in Frontend/src/domain/types.ts (Model). Keep the two in step.
-   Every logic model, placeholder or agent, must pass this before it is stored or served. */
+/* Zod schema for the logic tree format (schema_version 2.0), e.g. cough-pathway-logic-tree-v0.9.json.
+   Mirrors the types in Frontend/src/domain/logicTree.ts; keep the two in step.
+   Every logic model, placeholder or agent, must pass this before it is stored or served.
+   Unknown extra keys are allowed so the format can grow without breaking the pipeline. */
 
-const cond = z.enum(["ci", "stridor", "fast"]);
-const sign = z.enum(["drink", "vomit", "conv", "leth"]);
-const text = z.string().min(1);
-const outcome = z.object({ title: text, note: text }).strict();
-const quote = z.tuple([text, text]);
+const scalar = z.union([z.string(), z.number()]);
+type Cond = { field: string; op: "=" | "!=" | ">=" | "<" | "in"; value: string | number | (string | number)[] } | { all: Cond[] } | { any: Cond[] };
+export const CondSchema: z.ZodType<Cond> = z.lazy(() => z.union([
+  z.object({ field: z.string().min(1), op: z.enum(["=", "!=", ">=", "<", "in"]), value: z.union([scalar, z.array(scalar)]) }),
+  z.object({ all: z.array(CondSchema).min(1) }),
+  z.object({ any: z.array(CondSchema).min(1) }),
+]));
 
-export const QuestionSchema = z.object({
-  type: z.enum(["yesno", "int", "multi"]),
-  label: text,
-  showIf: z.string(),
-  quote: text,
-}).strict();
+const id = z.string().regex(/^[A-Za-z][A-Za-z0-9_]*$/);
+const flags = z.array(z.string());
 
-export const ModelSchema = z.object({
-  start: z.object({ ageMin: z.number().int().min(0), ageMax: z.number().int().positive() }).strict(),
-  d1: z.object({ q: text, signs: z.array(sign) }).strict(),
-  d2: z.object({ q: text, conds: z.array(cond), hint: z.string() }).strict(),
-  d3: z.object({ q: text, conds: z.array(cond), cut: z.number().int().positive(), young: z.number().int().positive(), old: z.number().int().positive(), hint: z.string() }).strict(),
-  o1: outcome, o2: outcome, o3: outcome,
-  f1: z.object({ title: text, due: z.number().int().positive(), end: z.number().int().positive() }).strict(),
-  src: z.object({ start: quote, d1: quote, d2: quote, d3: quote, o1: quote, o2: quote, o3: quote, f1: quote }).strict(),
-  questions: z.record(z.string().regex(/^[a-z][a-z0-9_]*$/), QuestionSchema).refine(q => Object.keys(q).length > 0, "at least one question"),
-}).strict()
-  .refine(m => m.start.ageMin < m.start.ageMax, { message: "start.ageMin must be below start.ageMax", path: ["start"] })
-  .refine(m => m.f1.due <= m.f1.end, { message: "f1.due must not be after f1.end", path: ["f1"] });
+const InputSchema = z.object({
+  id, booklet_text: z.string().min(1), type: z.enum(["integer", "date", "yes_no", "choice"]),
+  unit: z.string().optional(), auto: z.boolean().optional(), options: z.array(z.string()).optional(),
+  asked_when: CondSchema.optional(), source: z.string(), flags,
+}).passthrough();
 
-export type LogicModel = z.infer<typeof ModelSchema>;
+const ExternalDateSchema = z.object({ id, description: z.string(), source: z.string(), flags }).passthrough();
+
+const DangerSignSchema = z.object({ id, booklet_text: z.string(), logic: CondSchema.optional(), source: z.string(), flags }).passthrough();
+
+const DerivedLogicSchema = z.union([
+  z.object({ cases: z.array(z.object({ when: CondSchema, value: z.string() })), otherwise: z.string() }),
+  CondSchema,
+]);
+
+const DerivedSchema = z.object({
+  id, type: z.enum(["yes_no", "choice"]), options: z.array(z.string()).optional(),
+  logic: DerivedLogicSchema.optional(),
+  danger_signs: z.array(DangerSignSchema).optional(), source: z.string(), flags,
+}).passthrough();
+
+const DoseValues = z.record(z.object({ booklet_text: z.string(), tablets: z.number().optional() }).passthrough());
+const DueAt = z.object({ from: z.string(), add_days: z.number(), repeat_every_days: z.number().optional(), until: z.string().optional() });
+
+const ActionSchema = z.object({
+  id: z.string().min(1), category: z.string(), booklet_text: z.string(),
+  medicine: z.string().optional(),
+  dose: z.object({ selected_by: z.string(), values: DoseValues, times_per_day: z.number().optional(), days: z.number().optional() }).optional(),
+  pending_condition: CondSchema.optional(),
+  due_at: DueAt,
+  source: z.string(), flags,
+}).passthrough();
+
+const LeafSchema = z.object({ leaf: z.string(), decision: z.string(), actions: z.array(z.string()), flags, source: z.string() }).passthrough();
+type Node = z.infer<typeof LeafSchema> | { node: string; question: string; check: Cond; yes: Node; no: Node };
+const NodeSchema: z.ZodType<Node> = z.lazy(() => z.union([
+  LeafSchema,
+  z.object({ node: z.string(), question: z.string(), check: CondSchema, yes: NodeSchema, no: NodeSchema }),
+]));
+
+export const LogicTreeSchema = z.object({
+  schema_version: z.literal("2.0"),
+  pathway: z.string().min(1),
+  guideline: z.string(),
+  logic_model_version: z.string(),
+  inputs: z.array(InputSchema).min(1),
+  external_dates: z.array(ExternalDateSchema).optional(),
+  derived: z.array(DerivedSchema),
+  actions: z.array(ActionSchema),
+  tree: NodeSchema,
+  flags: z.array(z.object({ id: z.string(), kind: z.string(), issue: z.string(), pages: z.string() })),
+}).passthrough();
+
+export type LogicTree = z.infer<typeof LogicTreeSchema>;
+export const FORMAT = "logic-tree/2.0";
