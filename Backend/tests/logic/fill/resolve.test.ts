@@ -241,6 +241,22 @@ describe("follow-ups and age bands", () => {
     expect(parseAgeBand("2 months up to 5 years")).toEqual({ min: 2, below: 60 });
     expect(parseAgeBand("under five")).toBeUndefined();
   });
+  it("reads the age range from the age variable's quote when range_hint is null (seen from the real extraction model)", () => {
+    const e = extraction((x) => {
+      const age = x.variables.find((v) => v.id === "age_m")!;
+      age.range_hint = null;
+      age.src = src(1, "Use this booklet for a child age 1 month up to 3 years.");
+    });
+    expect(ok(draft(), e).scope).toMatchObject({ age_months_min: 1, age_months_below: 36 });
+  });
+  it("still reports an unreadable age range when neither range_hint nor any quote states one", () => {
+    const e = extraction((x) => {
+      const age = x.variables.find((v) => v.id === "age_m")!;
+      age.range_hint = null;
+      age.src = src(1, "How old is the child?");
+    });
+    expect(problems(draft(), e).some((p) => /age range of variable "age_m"/.test(p))).toBe(true);
+  });
 });
 
 describe("what code adds", () => {

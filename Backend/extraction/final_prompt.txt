@@ -49,6 +49,9 @@ HOW TO COPY
   document states all of it. Otherwise null.
 - Reuse one variable id for the same input wherever it appears in the
   document.
+- For the child's age variable (unit "months"), set range_hint to the age
+  range the document covers, in the document's words, e.g. "2 months up to
+  5 years". Leave it null only if the document states no range.
 
 UNCLEAR CONTENT
 Add an entry to unclear_items only when the document itself is
