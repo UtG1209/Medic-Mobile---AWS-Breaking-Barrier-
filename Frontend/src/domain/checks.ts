@@ -97,7 +97,10 @@ function backendGolden(g: BackendGolden): Omit<Stage, "key" | "n" | "name" | "de
   const summary = g.run !== undefined && g.passed !== undefined
     ? g.passed + " of " + g.run + " golden cases match" + (failed > 0 ? ": " + failed + " do not" : "")
     : g.issues.length ? g.issues.length + " note" + (g.issues.length > 1 ? "s" : "") + " on the golden cases" : "The golden cases ran";
-  return { status: failed > 0 ? "fail" : statusOf(issues), issues, uses, summary };
+  // Every case gives the expected result: passed. Notes (a result no case leads to) stay listed in the details; they are not failures.
+  const allRight = g.run !== undefined && g.passed !== undefined && failed === 0;
+  const headline = g.run !== undefined && g.passed !== undefined ? g.passed + " of " + g.run : undefined;
+  return { status: failed > 0 ? "fail" : allRight ? "pass" : statusOf(issues), issues, uses, summary, ...(headline !== undefined ? { headline } : {}) };
 }
 
 /** How much a cross-check difference matters, lowest first: children who get a different result, then the cut-offs, doses and results
@@ -112,6 +115,8 @@ const CROSS_RANK: Record<string, number> = {
 /** The card lists this many differences, the most important first; how alike the drafts are is the headline, and the summary
     says how many more there are. The full list stays in the backend's findings. */
 export const CROSS_SHOWN = 3;
+/** The drafts count as agreeing (a green check) when at least this share of the sample patients get the same result in both. */
+export const CROSS_AGREE_PCT = 95;
 const crossRank = (code: string): number => CROSS_RANK[code] ?? 6;
 const plural = (n: number, w: string): string => n + " " + w + (n === 1 ? "" : "s");
 
@@ -148,7 +153,8 @@ function backendCross(c: CrossFlags): Omit<Stage, "key" | "n" | "name" | "desc" 
   const tail = rest > 0
     ? ". The " + shown.length + " clearest differences are listed; " + rest + " smaller one" + (rest === 1 ? " is" : "s are") + " not" + (quiet > 0 ? " (" + quiet + " of them open questions that only one draft raised)" : "")
     : "";
-  return { status: statusOf(issues), issues, uses, summary: head + goldenLine + tail, ...(headline !== undefined ? { headline } : {}) };
+  const agree = raw !== undefined && raw >= CROSS_AGREE_PCT;
+  return { status: agree ? "pass" : statusOf(issues), issues, uses, summary: head + goldenLine + tail, ...(headline !== undefined ? { headline } : {}) };
 }
 
 const cache = new WeakMap<Spec, { ev: Evidence; stages: Stage[] }>();
