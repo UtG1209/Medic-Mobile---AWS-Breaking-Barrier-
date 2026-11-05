@@ -48,6 +48,10 @@ export interface Config {
   cognito?: { userPoolId: string; clientId: string };
   // Quote-support scoring after the checks (advisory, src/scoring). Present only when JUDGE_MODEL_ID is set.
   scoring?: { judgeModelId: string; pythonBin: string; scriptPath: string; samples: number };
+  // The second, independent draft for the "two drafts agree" check, made after fill_logic (src/steps/crossDraft.ts).
+  // On by default; CROSS_DRAFT=off turns it off (a run then costs about half as much). Not made when the second draft
+  // is supplied another way (CROSS_CHECK_MODEL_PATH set, including "none").
+  crossDraft: { enabled: boolean; suppliedElsewhere: boolean };
 }
 
 export const LOG_LEVELS = ["fatal", "error", "warn", "info", "debug", "trace", "silent"] as const;
@@ -178,6 +182,10 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     officerAgentMaxCostUsd: positiveNumber(env, "OFFICER_AGENT_MAX_COST_USD", 2),
     ...(budget !== undefined ? { runBudgetUsd: budget } : {}),
     logLevel,
+    crossDraft: {
+      enabled: str(env, "CROSS_DRAFT", "on").toLowerCase() !== "off",
+      suppliedElsewhere: env["CROSS_CHECK_MODEL_PATH"] !== undefined && env["CROSS_CHECK_MODEL_PATH"] !== "",
+    },
     ...(poolId !== "" ? { cognito: { userPoolId: poolId, clientId } } : {}),
     ...(env["JUDGE_MODEL_ID"] !== undefined && env["JUDGE_MODEL_ID"] !== ""
       ? {
