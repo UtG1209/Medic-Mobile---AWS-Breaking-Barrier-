@@ -120,7 +120,7 @@ describe("extract step", () => {
 
     const req = model.calls[0]!;
     expect(req.modelId).toBe("m1");
-    expect(req.maxTokens).toBe(32000);
+    expect(req.maxTokens).toBe(64000);
     expect(req.system).toBe(readFileSync(promptPath, "utf8"));
     const c = req.content;
     expect(c).toHaveLength(1 + 3 * 2 + 1);
