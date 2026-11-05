@@ -6,6 +6,7 @@ import { resolveDraft, type ResolveOptions, type ResolvedModel } from "../logic/
 import { ModelOutputError, RunawayOutputError, type ModelContent } from "../model/modelClient.js";
 import { Conflict } from "../store/store.js";
 import { ExtractionOutput } from "./extractionSchema.js";
+import { missingQuestions, namingRepairText, type RequiredQuestion } from "./goldenNames.js";
 import type { LogicModelValidator } from "./logicModelValidator.js";
 
 export interface FillLogicOptions {
@@ -16,6 +17,8 @@ export interface FillLogicOptions {
   maxTokens?: number;
   /** The names the confirmed test cases use, as text for the prompt (see goldenNames.ts). A failure here never fails the step. */
   namingHint?: (runId: string) => Promise<string | undefined>;
+  /** The questions the confirmed test cases answer. A finished draft that lacks one gets one correction call (kept only if better). */
+  requiredQuestions?: (runId: string) => Promise<RequiredQuestion[] | undefined>;
   /** Logic model meta.pathway_id; defaults to a slug of the guideline source id. */
   pathwayId?: string;
   guideline?: { title?: string; publisher?: string; edition?: string };
@@ -130,6 +133,8 @@ export function createFillLogicStep(opts: FillLogicOptions): Step {
       let usage = first.usage;
       let attempt = tryResolve(first.draft, first.problems);
       let draft = first.draft;
+      let raw = first.raw;
+      let repaired = false;
 
       // One repair call with the list of problems; content findings are not repaired here.
       if (attempt.model === undefined) {
@@ -150,6 +155,8 @@ export function createFillLogicStep(opts: FillLogicOptions): Step {
         usage = addUsage(usage, second.usage);
         attempt = tryResolve(second.draft, second.problems);
         draft = second.draft;
+        raw = second.raw;
+        repaired = true;
         if (attempt.model === undefined) {
           const message = `fill_logic: the model draft still has ${attempt.problems.length} problem(s) after one repair: ${attempt.problems.slice(0, 10).join("; ")}`;
           // A problem in the extraction itself (no age variable, an unreadable age range) comes back every time: do not retry.
@@ -160,6 +167,28 @@ export function createFillLogicStep(opts: FillLogicOptions): Step {
             message,
             usage,
           );
+        }
+      }
+      // The confirmed test cases answer questions by id and type, and a draft without one cannot be tested against them. The
+      // model's names vary from run to run, so one correction call asks for what is missing. It is kept only when it resolves
+      // and has fewer of them missing; otherwise the draft stays as it was (the golden-case check then says what is missing).
+      // Never fails the step, and is skipped when the draft already needed a repair.
+      const required = await opts.requiredQuestions?.(runId).catch(() => undefined);
+      if (required !== undefined && required.length > 0 && !repaired && attempt.model !== undefined) {
+        const missing = missingQuestions(attempt.model.questions, required);
+        if (missing.length > 0) {
+          const fixContent: ModelContent[] = [...content, { type: "text", text: "Your previous answer was:\n" + raw }, { type: "text", text: namingRepairText(missing) }];
+          try {
+            const third = await call(fixContent, "raw_naming.txt");
+            usage = addUsage(usage, third.usage);
+            const t = tryResolve(third.draft, third.problems);
+            if (t.model !== undefined && missingQuestions(t.model.questions, required).length < missing.length) {
+              attempt = t;
+              draft = third.draft;
+            }
+          } catch {
+            // A failed correction keeps the draft as it was.
+          }
         }
       }
       const body = attempt.model;

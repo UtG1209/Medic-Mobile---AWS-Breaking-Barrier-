@@ -41,7 +41,7 @@ export interface CrossFlag { severity: "blocking" | "warning" | "info"; code: st
 /** The backend's flags document, the parts the front end reads. */
 export interface CrossFlags {
   n: number; comparison: "ran" | "not_run" | "second_draft_invalid"; notice: string;
-  summary: { flagCount: number; compared?: number; differing?: number; skipped?: number };
+  summary: { flagCount: number; compared?: number; differing?: number; skipped?: number; groups?: number };
   flags: CrossFlag[];
 }
 

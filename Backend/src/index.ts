@@ -26,7 +26,7 @@ import { withScoring } from "./scoring/scoreVersion.js";
 import { createChecksStep } from "./steps/checks.js";
 import { createExtractStep } from "./steps/extract.js";
 import { createFillLogicStep } from "./steps/fillLogic.js";
-import { goldenNamingHint } from "./steps/goldenNames.js";
+import { goldenNamingHint, goldenQuestions } from "./steps/goldenNames.js";
 import { withCrossDraft } from "./steps/crossDraft.js";
 import { defaultCheckInputs } from "./signoff/checkInputs.js";
 import { createIngestStep, createPdfInfoPageCount, defaultExec } from "./steps/ingest.js";
@@ -93,6 +93,7 @@ async function main(): Promise<void> {
     promptPath: cfg.fillPrompt,
     // The ids the confirmed test cases use, from the same source the checks read (the run's file, else the bundled one).
     namingHint: async (runId: string) => goldenNamingHint((await defaultCheckInputs(artifacts)(runId)).goldenCases),
+    requiredQuestions: async (runId: string) => goldenQuestions((await defaultCheckInputs(artifacts)(runId)).goldenCases),
   };
   const extractStep = createExtractStep(extractOpts);
   const fillStep = createFillLogicStep(fillOpts);

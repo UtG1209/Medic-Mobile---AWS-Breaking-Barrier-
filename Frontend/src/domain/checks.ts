@@ -98,19 +98,45 @@ function backendGolden(g: BackendGolden): Omit<Stage, "key" | "n" | "name" | "de
   return { status: failed > 0 ? "fail" : statusOf(issues), issues, uses, summary };
 }
 
+/** How much a cross-check difference matters, lowest first: children who get a different result, then the cut-offs, doses and results
+    that differ, then structure. An open question that only one draft raised is the least: each draft raises its own. */
+const CROSS_RANK: Record<string, number> = {
+  CROSS_CHECK_DISAGREEMENT: 0, CROSS_CHECK_SCOPE_DIFFERS: 1,
+  CROSS_CHECK_CUTOFF_DIFFERS: 2, CROSS_CHECK_DOSE_DIFFERS: 2, CROSS_CHECK_SEVERITY_DIFFERS: 2,
+  CROSS_CHECK_FOLLOWUP_DIFFERS: 3, CROSS_CHECK_OUTCOME_ONLY_IN_ONE: 3,
+  CROSS_CHECK_QUESTION_DIFFERS: 4, CROSS_CHECK_QUESTION_ONLY_IN_ONE: 4, CROSS_CHECK_ACTION_DIFFERS: 5,
+  CROSS_CHECK_OPEN_QUESTION_ONLY_IN_ONE: 9,
+};
+/** The card lists at least this many differences, the most important first; the rest are counted in its summary. Every group of
+    children who get a different result is listed (up to CROSS_MAX), because those are what a clinician must look at. */
+export const CROSS_SHOWN = 5;
+export const CROSS_MAX = 8;
+const crossRank = (code: string): number => CROSS_RANK[code] ?? 6;
+const plural = (n: number, w: string): string => n + " " + w + (n === 1 ? "" : "s");
+
 /** The cross check as the backend ran it on the loaded version (live mode). Every flag is a warning: none blocks signing. */
 function backendCross(c: CrossFlags): Omit<Stage, "key" | "n" | "name" | "desc" | "asks" | "owner"> {
   const uses = "Backend cross-check of version " + c.n;
   if (c.comparison === "not_run")
     return { status: "missing", issues: [], uses, summary: "Not run: the backend has no second draft for this run." };
-  const issues: Check[] = c.flags.filter(f => f.severity !== "info").map(f => ({ kind: "cross", sev: "warning", id: subjectItem(f.subjects[0]), text: f.messages.clinician }));
+  const flags = c.flags.filter(f => f.severity !== "info").sort((a, b) => crossRank(a.code) - crossRank(b.code));
+  const real = flags.filter(f => crossRank(f.code) === 0).length;
+  const keep = Math.max(CROSS_SHOWN, Math.min(real, CROSS_MAX));
+  const shown = flags.slice(0, keep);
+  const issues: Check[] = shown.map(f => ({ kind: "cross", sev: "warning", id: subjectItem(f.subjects[0]), text: f.messages.clinician }));
   if (c.comparison === "second_draft_invalid")
     return { status: "warn", issues, uses, summary: "The second draft could not be read, so the drafts were not compared." };
   const s = c.summary;
-  const summary = s.compared === undefined
-    ? (issues.length ? issues.length + " difference" + (issues.length > 1 ? "s" : "") + " between the drafts" : "The drafts agree")
-    : (s.compared - (s.differing ?? 0)) + "/" + s.compared + " sample patients agree";
-  return { status: statusOf(issues), issues, uses, summary };
+  const rest = flags.length - shown.length;
+  const quiet = flags.slice(keep).filter(f => crossRank(f.code) >= 9).length; // open questions only one draft raised
+  const head = s.compared === undefined
+    ? (flags.length ? plural(flags.length, "difference") + " between the drafts" : "The drafts agree")
+    : (s.compared - (s.differing ?? 0)).toLocaleString("en-US") + " of " + s.compared.toLocaleString("en-US") + " sample patients agree"
+      + (s.differing ? "; " + s.differing.toLocaleString("en-US") + " differ" + (s.groups ? ", in " + plural(s.groups, "way") : "") : "");
+  const tail = rest > 0
+    ? ". Showing the " + shown.length + " most important of " + flags.length + " differences" + (quiet > 0 ? "; " + quiet + " of the other " + rest + " are open questions that only one draft raised" : "")
+    : "";
+  return { status: statusOf(issues), issues, uses, summary: head + tail };
 }
 
 const cache = new WeakMap<Spec, { ev: Evidence; stages: Stage[] }>();

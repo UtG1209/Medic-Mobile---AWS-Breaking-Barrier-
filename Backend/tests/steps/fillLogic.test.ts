@@ -184,6 +184,58 @@ describe("fill_logic step", () => {
     expect(plain.some((t) => t.includes("NAMES"))).toBe(false);
   });
 
+  describe("the confirmed test cases' questions", () => {
+    const required = [{ id: "cough_days", answer_type: "integer" as const }, { id: "age_months", answer_type: "integer" as const }];
+    const renamed = draftText.replaceAll('"cough_days"', '"cough_duration"'); // the same draft, one question under another id
+    const stepWith = (req: (runId: string) => Promise<typeof required | undefined>) =>
+      createFillLogicStep({ validator: parseModelValidator, modelId: "us.test.model-v1:0", promptPath, pathwayId: "cough_fast_breathing", requiredQuestions: req });
+    const qIds = async (a: MemoryArtifactStore) => (JSON.parse(await text(a, v1Key)).questions as { id: string }[]).map((q) => q.id);
+
+    it("makes no extra call when the draft has every question", async () => {
+      const { ctx, model } = await setup([good]);
+      await stepWith(async () => required).run(ctx);
+      expect(model.calls).toHaveLength(1);
+    });
+
+    it("asks once for what is missing and keeps the corrected draft when it is better", async () => {
+      const { ctx, artifacts, model } = await setup([{ raw: renamed, usage: usage(1000, 400) }, { raw: draftText, usage: usage(1500, 420) }]);
+      const res = await stepWith(async () => required).run(ctx);
+      expect(model.calls).toHaveLength(2);
+      const asked = (model.calls[1]!.content as { text?: string }[]).map((c) => c.text ?? "").join("\n");
+      expect(asked).toContain("- cough_days (integer)");
+      expect(asked).not.toContain("- age_months");
+      expect(await qIds(artifacts)).toContain("cough_days");
+      expect(await text(artifacts, artifactKey("r1", "fill_logic", "raw_naming.txt"))).toBe(draftText);
+      expect(res.usage).toEqual(usage(2500, 820)); // both calls are paid for
+    });
+
+    it("keeps the first draft when the correction is no better, or does not resolve", async () => {
+      for (const second of [renamed, "not json"]) {
+        const { ctx, artifacts, model } = await setup([{ raw: renamed, usage: usage(1000, 400) }, { raw: second, usage: usage(10, 5) }]);
+        await expect(stepWith(async () => required).run(ctx)).resolves.toBeDefined();
+        expect(model.calls).toHaveLength(2);
+        const ids = await qIds(artifacts);
+        expect(ids).toContain("cough_duration");
+        expect(ids).not.toContain("cough_days");
+      }
+    });
+
+    it("keeps the first draft when the correction call itself fails", async () => {
+      const { ctx, artifacts } = await setup([{ raw: renamed, usage: usage(1000, 400) }, new TransientError("throttled")]);
+      await expect(stepWith(async () => required).run(ctx)).resolves.toBeDefined();
+      expect(await qIds(artifacts)).toContain("cough_duration");
+    });
+
+    it("never fails because the list of questions cannot be read, and does not ask when a type differs only by name", async () => {
+      const a = await setup([{ raw: renamed, usage: usage(1000, 400) }]);
+      await expect(stepWith(async () => { throw new Error("no golden file"); }).run(a.ctx)).resolves.toBeDefined();
+      expect(a.model.calls).toHaveLength(1);
+      const b = await setup([good]);
+      await stepWith(async () => []).run(b.ctx);
+      expect(b.model.calls).toHaveLength(1);
+    });
+  });
+
   it("does not repair a transient model error: it is rethrown for the runner to retry", async () => {
     const { ctx, model } = await setup([new TransientError("throttled")]);
     await expect(step.run(ctx)).rejects.toBeInstanceOf(TransientError);
