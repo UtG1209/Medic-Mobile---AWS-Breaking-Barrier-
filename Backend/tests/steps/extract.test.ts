@@ -6,7 +6,7 @@ import { runStep } from "../../src/engine/runner.js";
 import type { StepContext } from "../../src/engine/step.js";
 import { TransientError } from "../../src/engine/step.js";
 import { FakeModelClient, ModelOutputError } from "../../src/model/modelClient.js";
-import { checkQuotes, createExtractStep, findBadQuotes } from "../../src/steps/extract.js";
+import { QUOTE_TRIES, checkQuotes, createExtractStep, findBadQuotes } from "../../src/steps/extract.js";
 import { ExtractionOutput } from "../../src/steps/extractionSchema.js";
 import { MemoryStore } from "../../src/store/memoryStore.js";
 
@@ -145,17 +145,40 @@ describe("extract step", () => {
       id: `u${i}`, block_id: "p3.b1", quote: "x".repeat(200), what_is_unclear: "w", related_ids: [],
     }));
     const raw = JSON.stringify(o);
-    const model = new FakeModelClient([{ raw, usage }]);
+    const model = new FakeModelClient([{ raw, usage }, { raw, usage }]);
     const { ctx, artifacts } = await setup(model);
     const err = await createExtractStep({ modelId: "m1", promptPath }).run(ctx).catch((e) => e);
     expect(err).not.toBeInstanceOf(TransientError);
-    expect(err.usage).toEqual(usage);
+    expect(model.calls).toHaveLength(QUOTE_TRIES);
+    // Both paid calls are recorded.
+    expect(err.usage).toEqual({ ...usage, inputTokens: usage.inputTokens * 2, outputTokens: usage.outputTokens * 2 });
     expect(err.message).toContain("12");
     expect(err.message.match(/p3\.b1: /g)).toHaveLength(10);
     expect(err.message).toContain("x".repeat(80));
     expect(err.message).not.toContain("x".repeat(81));
     expect(await text(artifacts, artifactKey("r1", "extract", "raw_response.txt"))).toBe(raw);
     expect(await artifacts.exists(artifactKey("r1", "extract", "extraction_output.json"))).toBe(false);
+  });
+
+  it("calls the model again when quotes are not found, and keeps the second answer when it is right", async () => {
+    const o = emptyOutput() as Record<string, unknown[]>;
+    o.unclear_items = [{ id: "u0", block_id: "p3.b1", quote: "not in the booklet", what_is_unclear: "w", related_ids: [] }];
+    const good = JSON.stringify(emptyOutput());
+    const model = new FakeModelClient([{ raw: JSON.stringify(o), usage }, { raw: good, usage }]);
+    const { ctx, artifacts } = await setup(model);
+    const res = await createExtractStep({ modelId: "m1", promptPath }).run(ctx);
+    expect(model.calls).toHaveLength(2);
+    expect(res.usage).toEqual({ ...usage, inputTokens: usage.inputTokens * 2, outputTokens: usage.outputTokens * 2 });
+    expect(await text(artifacts, artifactKey("r1", "extract", "raw_response.txt"))).toBe(good);
+    expect(await artifacts.exists(artifactKey("r1", "extract", "extraction_output.json"))).toBe(true);
+  });
+
+  it("makes one model call when every quote is found", async () => {
+    const model = new FakeModelClient([{ raw: JSON.stringify(emptyOutput()), usage }]);
+    const { ctx } = await setup(model);
+    const res = await createExtractStep({ modelId: "m1", promptPath }).run(ctx);
+    expect(model.calls).toHaveLength(1);
+    expect(res.usage).toEqual(usage);
   });
 
   it("propagates ModelOutputError for invalid JSON", async () => {
@@ -247,6 +270,49 @@ describe("checkQuotes repairs only unambiguous slips, and records them", () => {
   it("other words are never repaired: only curly quotes are folded", () => {
     expect(checkQuotes(out("p12.b3", "Check vaccine received (see child's health card)"), blocks).bad).toHaveLength(1);
     expect(checkQuotes(out("p9.b18", "Give oral antibiotic (amoxycillin tablet-250 mg )."), blocks).bad).toHaveLength(1);
+  });
+
+  describe("spacing: the PDF's split lines and letter spacing (AWS run, Nov 5 2026)", () => {
+    const pdf = new Map([
+      ["p7.b1", " I F ANY DANGER SIGN , R EFER C HILD URGENTLY TO H EALTH F ACILITY"],
+      ["p9.b32", " Advise on when to return.\nGo to nearest health facility\nor, if not possible, return\nimmediately if child\n Cannot drink or feed\n Becomes sicker\n Has blood in stool\n Advise caregiver on use of a\nbednet (ITN)"],
+      ["p9.b33", " Follow up child in 3 days."],
+    ]);
+
+    it("letter spacing: the model's spacing becomes the booklet's", () => {
+      const o = out("p7.b1", "I F ANY DANGER SIGN, R EFER CHILD URGENTLY TO HEALTH FACILITY");
+      const r = checkQuotes(o, pdf, { apply: true });
+      expect(r.bad).toEqual([]);
+      expect(r.fixes.map((f) => f.kind)).toEqual(["spacing"]);
+      expect(o.nodes[0]!.src[0]!.quote).toBe("I F ANY DANGER SIGN , R EFER C HILD URGENTLY TO H EALTH F ACILITY");
+    });
+
+    it("a split line and an added full stop: the quote becomes the booklet's text, without the stop", () => {
+      const o = out("p9.b32", "Advise caregiver on use of a bednet (ITN).");
+      const r = checkQuotes(o, pdf, { apply: true });
+      expect(r.bad).toEqual([]);
+      expect(r.fixes.map((f) => f.kind)).toEqual(["spacing"]);
+      expect(o.nodes[0]!.src[0]!.quote).toBe("Advise caregiver on use of a\nbednet (ITN)");
+    });
+
+    it("a spacing slip in another block of the page also moves the quote there", () => {
+      const o = out("p9.b33", "Advise caregiver on use of a bednet (ITN)");
+      const r = checkQuotes(o, pdf, { apply: true });
+      expect(r.bad).toEqual([]);
+      expect(o.nodes[0]!.src[0]).toMatchObject({ block_id: "p9.b32", quote: "Advise caregiver on use of a\nbednet (ITN)" });
+    });
+
+    it("still fails: changed words, letters or other punctuation", () => {
+      for (const [id, q] of [
+        ["p9.b32", "Advise caregiver on use of a bed net (LLIN)."],
+        ["p9.b32", "Advise the caregiver on use of a bednet (ITN)"],
+        ["p7.b1", "IF ANY DANGER SIGN, REFER CHILD URGENTLY TO A HEALTH FACILITY"],
+        ["p7.b1", "IF ANY DANGER SIGN; REFER CHILD"],
+        ["p9.b33", "Follow up child in 5 days."],
+      ] as const) {
+        expect(checkQuotes(out(id, q), pdf).bad, `${id} ${q}`).toHaveLength(1);
+      }
+    });
   });
 
   it("findBadQuotes still reports every quote not exactly in its cited block", () => {

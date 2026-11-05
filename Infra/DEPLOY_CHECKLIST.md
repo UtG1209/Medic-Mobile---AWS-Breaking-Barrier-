@@ -6,7 +6,7 @@ Run by a human with sandbox credentials. Nothing here has been run on real AWS y
 - [ ] Organisers have confirmed API Gateway and EventBridge are allowed (DEC-011). AgentCore is optional and off by default (DEC-008).
 - [ ] Node 22 or newer, AWS CLI v2, Docker Desktop installed and **running** (the Lambda image is built at deploy time).
 - [ ] Logged in: `aws sso login --profile <profile>` then `export AWS_PROFILE=<profile>`; check with `aws sts get-caller-identity`.
-- [ ] Bedrock console, region us-west-2: access enabled for your model. Note its exact ID (default in code: `us.anthropic.claude-haiku-5-5`).
+- [ ] Bedrock console, region us-west-2: access enabled for your model. Note its exact ID (default in code: `us.anthropic.claude-haiku-4-5-20251001-v1:0`).
 - [ ] Decide the UI origin for CORS (default `http://localhost:5173`).
 - [ ] A synthetic or public test PDF (for example `Guideline_Docs/Cough_Guideline.pdf`).
 

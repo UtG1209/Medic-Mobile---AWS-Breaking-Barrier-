@@ -8,7 +8,7 @@ import { Construct } from "constructs";
 
 export const PROJECT_TAG_KEY = "project";
 export const PROJECT_TAG_VALUE = "no-code-cht-config";
-export const DEFAULT_MODEL_ID = "us.anthropic.claude-haiku-5-5";
+export const DEFAULT_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
 export const DEFAULT_UI_ORIGINS = ["http://localhost:5173"];
 
 // 6x the 15 minute Lambda timeout (AWS guidance for SQS event sources), also well above the run
