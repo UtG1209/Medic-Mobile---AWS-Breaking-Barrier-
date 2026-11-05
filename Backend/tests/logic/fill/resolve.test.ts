@@ -294,6 +294,20 @@ describe("what code adds", () => {
     expect(o.actions.every((a) => a.origin === "guideline" && a.dose_by_age === undefined)).toBe(true);
     expect(m.open_questions.find((q) => q.affects.includes("R1"))?.route_to).toBe("clinician");
   });
+  it("takes an outcome node's booklet quote as an action (real models list them), still refusing decision nodes", () => {
+    const e = extraction((x) => {
+      x.nodes.push({ id: "n_none", kind: "outcome", text: "model text is never used", parent_id: null, order: 5, clinical: true, pdf_page: 4, printed_page: null, out_of_scope: false, goto_target: null, src: src(4, "No treatment is needed.") });
+    });
+    const m = ok(draft((d) => d.outcomes[2].action_ids.push("n_none")), e);
+    expect(m.outcomes.find((o) => o.id === "home")!.actions.map((a) => [a.origin, a.text])).toEqual([["guideline", "No treatment is needed."]]);
+  });
+  it("quotes the guideline's referral step on the out-of-age result whatever the extraction calls its type (real models write 'referral')", () => {
+    const e = extraction((x) => {
+      x.actions.find((a) => a.id === "act_refer")!.type = "referral";
+    });
+    const o = ok(draft(), e).outcomes.find((x) => x.id === "refer_outside_age_range")!;
+    expect(o.actions.map((a) => [a.origin, a.text])).toEqual([["guideline", "REFER TO CLINIC"]]);
+  });
   it("keeps draft rule order and renumbers priorities after the age rule", () => {
     const m = ok(draft());
     expect(m.rules.map((r) => [r.id, r.priority, r.outcome])).toEqual([

@@ -485,7 +485,8 @@ export function resolveDraft(draft: Draft, ex: Ex, opts: ResolveOptions): Resolv
         return [{ text: clipText(text), ...sourced(src), ...(doses !== undefined ? { dose_by_age: doses } : {}) }];
       }
       const n = nodes.get(aid);
-      if (n !== undefined && (n.kind === "action" || n.kind === "advice")) {
+      // An outcome node ("No treatment is needed.") is the booklet's wording for what to do too; models list it often.
+      if (n !== undefined && (n.kind === "action" || n.kind === "advice" || n.kind === "outcome")) {
         // The node's quotes, never its text field (which the guideline reader wrote, and could carry anything).
         const text = quoteText(n.src);
         const src = sources(n.src);
@@ -495,7 +496,7 @@ export function resolveDraft(draft: Draft, ex: Ex, opts: ResolveOptions): Resolv
         }
         return [{ text: clipText(text), ...sourced(src) }];
       }
-      if (n !== undefined) problem(`Outcome "${o.id}": "${aid}" is a ${n.kind} node, not an action or advice; list extraction.actions ids or action/advice node ids.`);
+      if (n !== undefined) problem(`Outcome "${o.id}": "${aid}" is a ${n.kind} node, not an action, advice or outcome; list extraction.actions ids or action/advice/outcome node ids.`);
       else problem(`Outcome "${o.id}": action "${aid}" is not in extraction.actions or extraction.nodes.`);
       return [];
     });
@@ -560,7 +561,8 @@ export function resolveDraft(draft: Draft, ex: Ex, opts: ResolveOptions): Resolv
     // Referral steps are quoted from the guideline when it has them (never drugs: doses are only
     // given for the covered ages); the choice to refer is the team's and is an open question.
     const referActs = ex.actions
-      .filter((a) => a.type === "refer" || a.type === "referral_step")
+      // The extraction prompt leaves the type free; models write "refer", "referral", "referral_step", "Refer urgently".
+      .filter((a) => /^refer/i.test(a.type.trim()))
       .map((a) => ({ text: clipText(a.src[0]?.quote ?? a.type), ...sourced(sources(a.src)) }))
       .filter((a) => a.origin === "guideline");
     const onReturn = ex.followups.find((f) => parseFollowup(f.text, f.due_text)?.kind === "on_return");
