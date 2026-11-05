@@ -25,6 +25,16 @@ export interface Evidence {
   /** Live mode: the backend's own golden-case result for the loaded version (from its findings). Used instead of the
       small built-in table when present; null/undefined when the backend gave no golden-case findings. */
   golden?: BackendGolden | null;
+  /** Live mode: the backend's own quote check of the loaded version (the guideline text stays in the backend, so the front end
+      cannot run it). Null when the backend did not run it. */
+  quotes?: BackendQuotes | null;
+}
+
+/** The backend's quote check (Backend/src/validation/checks/quoteGrounding.ts), as the quote card shows it. */
+export interface BackendQuotes {
+  n: number;
+  /** Every finding of the check, de-duplicated. None means every quote was found on the page it names. */
+  issues: { sev: "blocking" | "warning"; text: string }[];
 }
 
 /** The backend's golden-case result (Backend/src/validation/checks/goldenCases.ts), as the golden card shows it. */
@@ -77,7 +87,7 @@ export interface VerifyResult { match: number; total: number; cov: number; covTo
 /** A finding from the backend's checks (GET /runs/:id/versions/:n/findings), worded for one role. */
 export interface RemoteFinding { severity: "blocking" | "warning" | "info"; message: string; check: string; role: "program_officer" | "clinician" }
 /** Live mode: the backend run and version this workflow was loaded from. */
-export interface Remote { runId: string; n: number; modelSha: string; base: Model; claimText: string; findings: RemoteFinding[] }
+export interface Remote { runId: string; n: number; modelSha: string; base: Model; claimText: string; findings: RemoteFinding[]; /** Checks the backend did not run, in its words. */ notRun?: string[] }
 
 /** One scored item of GET /runs/:id/versions/:n/scores (Backend/scoring/score_version.py). */
 export interface ScoreItem {

@@ -5,7 +5,7 @@
 import { analyze, applyPatch, item, crossCheck, literals, numberResults, quoteResults, type ItemId, type Spec } from "../../../shared/pathway/index.ts";
 import { GOLDEN } from "./data";
 import { classify, describeP, golden, grid, itemLabel, outName } from "./logic";
-import type { BackendGolden, Check, CheckKey, CrossFlags, Evidence } from "./types";
+import type { BackendGolden, BackendQuotes, Check, CheckKey, CrossFlags, Evidence } from "./types";
 
 export type StageStatus = "pass" | "warn" | "fail" | "skipped" | "missing";
 export interface Part { name: string; ok: boolean; text: string }
@@ -120,6 +120,16 @@ export const CROSS_AGREE_PCT = 95;
 const crossRank = (code: string): number => CROSS_RANK[code] ?? 6;
 const plural = (n: number, w: string): string => n + " " + w + (n === 1 ? "" : "s");
 
+/** The quote check as the backend ran it on the loaded version (live mode): it reads the guideline text, which stays in the backend.
+    A problem shows as "Needs fixing" but does not join the approval gate: the program officer's agent settles quotes before the clinician signs. */
+function backendQuotes(q: BackendQuotes): Omit<Stage, "key" | "n" | "name" | "desc" | "asks" | "owner"> {
+  const uses = "Backend quote check of version " + q.n;
+  const issues: Check[] = q.issues.map(i => ({ kind: "quote", sev: "warning", id: item.scope, text: i.text }));
+  if (!issues.length) return { status: "pass", issues, uses, summary: "Every quoted sentence was found in the guideline, on the page it names." };
+  const blocking = q.issues.filter(i => i.sev === "blocking").length;
+  return { status: blocking ? "fail" : "warn", issues, uses, summary: plural(issues.length, "quote") + " could not be matched to the guideline" + (blocking ? "." : " (notes only).") };
+}
+
 /** The cross check as the backend ran it on the loaded version (live mode). Every flag is a warning: none blocks signing. */
 function backendCross(c: CrossFlags): Omit<Stage, "key" | "n" | "name" | "desc" | "asks" | "owner"> {
   const uses = "Backend cross-check of version " + c.n;
@@ -177,7 +187,8 @@ export function checkStages(m: Spec, ev: Evidence): Stage[] {
     return out;
   }
 
-  if (!ev.pages) add("quote", { status: "missing", issues: [], summary: "Needs the guideline text, which is not loaded for this draft." });
+  if (ev.quotes) add("quote", backendQuotes(ev.quotes));
+  else if (!ev.pages) add("quote", { status: "missing", issues: [], summary: "Needs the guideline text, which is not loaded for this draft." });
   else {
     const rs = quoteResults(m, ev.pages);
     const issues: Check[] = [];

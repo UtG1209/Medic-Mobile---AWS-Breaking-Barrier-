@@ -12,7 +12,7 @@ import { FALLBACK_TEXT } from "../domain/agent";
 import { sampleScores } from "../domain/scores";
 import { AUTH, currentUser, idToken, signIn } from "../auth";
 import { item } from "../../../shared/pathway/index.ts";
-import type { AuditRow, BackendGolden, CrossFlags, Escalation, Guideline, GuidelineType, ItemId, Model, Patch, QuoteScores, Spec, Workflow } from "../domain/types";
+import type { AuditRow, BackendGolden, BackendQuotes, CrossFlags, Escalation, Guideline, GuidelineType, ItemId, Model, Patch, QuoteScores, Spec, Workflow } from "../domain/types";
 
 export const API_URL: string | undefined = import.meta.env.VITE_API_URL?.replace(/\/+$/, "") || undefined;
 /** True when guidelines come from the backend pipeline rather than sample data. */
@@ -36,7 +36,7 @@ type RunState = "created" | "ingesting" | "extracting" | "filling_logic" | "in_r
 interface Run { runId: string; state: RunState; pages?: number[]; currentStep?: string; createdAt: number }
 interface StepRecord { step: string; attempt: number; status: "running" | "succeeded" | "failed"; startedAt: number; endedAt?: number; error?: string }
 interface VersionRec { n: number; author: string; authorRole?: string; createdAt: number; status?: string }
-interface FindingsView { modelSha: string; claimText: string; blocking: number; groups: { severity: "blocking" | "warning" | "info"; findings: { message: string; check: string }[] }[] }
+interface FindingsView { modelSha: string; claimText: string; blocking: number; checksNotRun?: string[]; groups: { severity: "blocking" | "warning" | "info"; findings: { message: string; check: string }[] }[] }
 interface StatusView { n: number; modelSha: string; status: string; runState: RunState; nextStep: string }
 type ScoresView =
   | ({ runId: string; n: number; status: "scored"; modelSha: string } & Omit<Extract<QuoteScores, { status: "scored" }>, "status" | "n" | "modelSha" | "base">)
@@ -216,6 +216,17 @@ export function goldenFrom(n: number, findings: readonly { severity: string; mes
   return { n, ...(count ? { run: Number(count[1]), passed: Number(count[2]) } : {}), issues };
 }
 
+/* ---------- Quotes (the backend checks them against the guideline text; the card shows its result) ---------- */
+/** The backend's quote check of version n. Null when it did not run (the guideline text of the run is missing). */
+export function quotesFrom(n: number, findings: readonly { severity: string; message: string; check: string }[], notRun: readonly string[] | undefined): BackendQuotes | null {
+  if ((notRun ?? []).some(x => /quote and number checks against the booklet/.test(x))) return null;
+  const seen = new Set<string>();
+  const issues = findings
+    .filter(f => f.check === "quoteGrounding" && f.severity !== "info" && !seen.has(f.message) && !!seen.add(f.message))
+    .map(f => ({ sev: (f.severity === "blocking" ? "blocking" : "warning") as "blocking" | "warning", text: f.message }));
+  return { n, issues };
+}
+
 /* ---------- Cross check (advisory) ---------- */
 /** The backend's cross-check flags of version n. Never throws: null leaves the stage saying it could not load. */
 async function loadCross(runId: string, n: number): Promise<CrossFlags | null> {
@@ -252,7 +263,7 @@ async function loadEscalation(runId: string): Promise<Escalation | null> {
   }
 }
 /** The workflow with the cross check of a newly loaded backend version. */
-const withCross = (w: Workflow, cross: CrossFlags | null): Workflow => ({ ...w, evidence: { ...w.evidence, cross, golden: w.remote ? goldenFrom(w.remote.n, w.remote.findings) : null } });
+const withCross = (w: Workflow, cross: CrossFlags | null): Workflow => ({ ...w, evidence: { ...w.evidence, cross, golden: w.remote ? goldenFrom(w.remote.n, w.remote.findings) : null, quotes: w.remote ? quotesFrom(w.remote.n, w.remote.findings, w.remote.notRun) : null } });
 class OfficerNotSigned extends Error {}
 
 /* ---------- Workflow ---------- */
@@ -272,8 +283,8 @@ export async function createDraft(args: { guidelineId: string; pathway: string; 
       loadCross(g.id, last.n),
     ]);
     const flat = (f: FindingsView, role: "clinician" | "program_officer") => f.groups.flatMap(gr => gr.findings.map(x => ({ severity: gr.severity, message: x.message, check: x.check, role })));
-    const remote = { runId: g.id, n: last.n, modelSha: fc.modelSha, base: clone(model), claimText: fc.claimText, findings: [...flat(fc, "clinician"), ...flat(fo, "program_officer")] };
-    const evidence = { pages: null, pagesFrom: "Guideline text stays in the backend; its own quote check is in the backend findings", draftB: null, draftBFrom: "The backend runs the cross check itself", cross, golden: goldenFrom(last.n, remote.findings) };
+    const remote = { runId: g.id, n: last.n, modelSha: fc.modelSha, base: clone(model), claimText: fc.claimText, findings: [...flat(fc, "clinician"), ...flat(fo, "program_officer")], notRun: fc.checksNotRun ?? [] };
+    const evidence = { pages: null, pagesFrom: "Guideline text stays in the backend; its own quote check is in the backend findings", draftB: null, draftBFrom: "The backend runs the cross check itself", cross, golden: goldenFrom(last.n, remote.findings), quotes: quotesFrom(last.n, remote.findings, remote.notRun) };
     workflows[id] = wf.createDraft(wf.initialWorkflow(id), { id: g.id, name: g.name, pathway: args.pathway, pages: args.pages }, {
       model, evidence, remote,
       event: "Loaded logic model version " + last.n + " from the backend (run " + g.id + ")",
@@ -331,7 +342,7 @@ async function fetchLatest(runId: string): Promise<{ model: Spec; remote: NonNul
     loadCross(runId, last.n),
   ]);
   const flat = (f: FindingsView, role: "clinician" | "program_officer") => f.groups.flatMap(gr => gr.findings.map(x => ({ severity: gr.severity, message: x.message, check: x.check, role })));
-  return { model, cross, remote: { runId, n: last.n, modelSha: fc.modelSha, base: clone(model), claimText: fc.claimText, findings: [...flat(fc, "clinician"), ...flat(fo, "program_officer")] } };
+  return { model, cross, remote: { runId, n: last.n, modelSha: fc.modelSha, base: clone(model), claimText: fc.claimText, findings: [...flat(fc, "clinician"), ...flat(fo, "program_officer")], notRun: fc.checksNotRun ?? [] } };
 }
 
 /** The selected rule, question, result or value as loaded on the page (unsaved edits included), for the assistant. */
