@@ -2,9 +2,10 @@
   "app": "npx ts-node --prefer-ts-exts bin/app.ts",
   "watch": { "include": ["**"], "exclude": ["README.md", "cdk*.json", "node_modules", "test", "cdk.out"] },
   "context": {
-    "uiOrigins": ["http://localhost:5173"],
-    "modelId": "us.anthropic.claude-haiku-5-5",
+    "uiOrigins": ["http://localhost:5173", "https://d1xnuu43bnvo9k.cloudfront.net"],
+    "modelId": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
     "prices": {
+      "us.anthropic.claude-haiku-4-5-20251001-v1:0": { "inPerMTok": 1, "outPerMTok": 5 },
       "us.anthropic.claude-haiku-5-5": { "inPerMTok": 0.1, "outPerMTok": 0.5 },
       "us.anthropic.claude-sonnet-4-5-20250929-v1:0": { "inPerMTok": 3, "outPerMTok": 15 }
     }

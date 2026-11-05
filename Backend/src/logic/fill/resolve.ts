@@ -63,18 +63,34 @@ export function normalizeUnit(u: string | null | undefined): string | undefined 
   // The extraction prompt does not fix the wording of the age unit, and models write "months/years",
   // "age in months", ... The form asks the child's age in whole months (ENTRY_LIMITS.months), so any unit that
   // names months is months. Found in a real run: "months/years" made fill_logic fail with "no child age variable".
-  return /(^|_)months?(_|$)/.test(s) ? "months" : s;
+  if (/(^|_)(months?|mos?|mths?)(_|$)/.test(s)) return "months";
+  // Entry limits are keyed by unit too (ENTRY_LIMITS), so the usual spellings of days and breaths map to one name.
+  if (/^(?:number_of_)?days?$/.test(s)) return "days";
+  if (/^(?:breaths?|bpm|breaths?_(?:per|a|in_1|in_one)_min(?:ute)?|breaths?_min)$/.test(s)) return "breaths_per_minute";
+  return s;
 }
 
+const AGE_UNIT = "(months?|mos?|mths?|years?|yrs?)";
 const toMonths = (n: number, unit: string): number => (/^y/i.test(unit) ? n * 12 : n);
 
-/** "age 2 months up to 12 months", "2 months up to 5 years" -> [2, 12), [2, 60). Undefined when it does not read cleanly. */
+/**
+ * The age band a text states, in months, as [min, below):
+ * - "2 months up to 5 years", "age 2 months up to 12 months", "2 to 59 months", "2 months to under 5 yrs":
+ *   the upper number is excluded, as the booklet means it ("up to 12 months" is below 12);
+ * - "2-59 months" (a dash, in months): the upper number is included, so [2, 60); "2 months - 5 years" is [2, 60).
+ * A unit given once at the end applies to both numbers. Undefined when it does not read cleanly.
+ */
 export function parseAgeBand(text: string | null | undefined): Band | undefined {
   if (text === null || text === undefined) return undefined;
-  const m = /(\d+)\s*(months?|years?)\s+(?:up\s+to|to|until)\s+(\d+)\s*(months?|years?)/i.exec(text);
+  const words = new RegExp(`(\\d+)\\s*${AGE_UNIT}?\\s+(?:up\\s+to|to|until)\\s+(?:(?:but\\s+not\\s+including|under|below|less\\s+than)\\s+)?(\\d+)\\s*${AGE_UNIT}\\b`, "i").exec(text);
+  const dash = words ? null : new RegExp(`(\\d+)\\s*${AGE_UNIT}?\\s*[-\u2013\u2014]\\s*(\\d+)\\s*${AGE_UNIT}\\b`, "i").exec(text);
+  const m = words ?? dash;
   if (!m) return undefined;
-  const min = toMonths(Number(m[1]), m[2] as string);
-  const below = toMonths(Number(m[3]), m[4] as string);
+  const upperUnit = m[4] as string;
+  const min = toMonths(Number(m[1]), (m[2] as string | undefined) ?? upperUnit);
+  // A dash range in months includes its upper end ("2-59 months" covers 59), so the first age outside it is one
+  // month more. In years it means up to that birthday ("2 months - 5 years" is below 60), as "up to" does.
+  const below = toMonths(Number(m[3]) + (dash && /^m/i.test(upperUnit) ? 1 : 0), upperUnit);
   if (!Number.isSafeInteger(min) || !Number.isSafeInteger(below) || min >= below) return undefined;
   return { min, below };
 }
