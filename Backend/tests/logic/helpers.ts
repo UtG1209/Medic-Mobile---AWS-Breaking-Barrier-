@@ -11,7 +11,7 @@ export function rawV1(): any {
 }
 
 export function rawGolden(): GoldenCase[] {
-  return JSON.parse(readFileSync(join(fixtures, "golden-proposed.json"), "utf8")) as GoldenCase[];
+  return JSON.parse(readFileSync(join(fixtures, "golden-testcases.json"), "utf8")) as GoldenCase[];
 }
 
 export interface GoldenCase {

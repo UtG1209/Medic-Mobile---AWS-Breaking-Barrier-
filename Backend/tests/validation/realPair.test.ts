@@ -3,7 +3,7 @@ import { runChecks } from "../../src/validation/runChecks.js";
 import { findingsFor } from "../../src/validation/gates.js";
 import { demoSettings, goldenCases, realCtx, realExtraction, JARGON_RE } from "./helpers.js";
 
-/** The whole chain on the real pair: v1.json, the real booklet blocks, the real extraction, the proposed golden cases and the demo settings. */
+/** The whole chain on the real pair: v1.json, the real booklet blocks, the real extraction, the golden cases and the demo settings. */
 const full = () => runChecks({ ...realCtx(), extraction: realExtraction(), goldenCases: goldenCases(), compileSettings: demoSettings() });
 
 const counts = (r: ReturnType<typeof full>): Record<string, number> => {
@@ -12,7 +12,7 @@ const counts = (r: ReturnType<typeof full>): Record<string, number> => {
   return Object.fromEntries(Object.entries(c).sort(([a], [b]) => (a < b ? -1 : 1)));
 };
 
-describe("v1.json on the real pair (real booklet blocks, real extraction, proposed golden cases, demo settings)", () => {
+describe("v1.json on the real pair (real booklet blocks, real extraction, golden cases, demo settings)", () => {
   const r = full();
 
   it("yields exactly these findings, each one justified", () => {
@@ -65,7 +65,7 @@ describe("v1.json on the real pair (real booklet blocks, real extraction, propos
   it("all cases agree; every outcome has a case; the claim is PROVEN", () => {
     expect(r.claim).toBe("PROVEN");
     const g = r.findings.find((x) => x.code === "GOLDEN_COUNT")!;
-    expect(g.params).toMatchObject({ total: 20, agree: 20, different: 0 });
+    expect(g.params).toMatchObject({ total: 32, agree: 32, different: 0 });
     expect(r.findings.some((x) => x.code === "OUTCOME_WITHOUT_GOLDEN_CASE")).toBe(false);
     // everything but the optional second draft was supplied
     expect(r.findings.find((x) => x.code === "CONTEXT_NOT_PROVIDED")?.params["needs"]).toBe("the second draft");

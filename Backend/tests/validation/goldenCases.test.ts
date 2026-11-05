@@ -9,13 +9,13 @@ describe("goldenCases", () => {
   it("without cases nothing is reported", () => {
     expect(goldenCasesCheck(matchedCtx())).toEqual([]);
   });
-  it("the proposed cases all agree with v1.json; the count is reported and the not-yet-confirmed cases are listed once", () => {
+  it("the golden cases all agree with v1.json; the count is reported and only the 20 not-yet-confirmed cases are listed, once", () => {
     const fs = run();
     expect(fs.filter((f) => f.code === "GOLDEN_MISMATCH" || f.code === "GOLDEN_INVALID")).toEqual([]);
     const count = fs.find((f) => f.code === "GOLDEN_COUNT")!;
     expect(count.severity).toBe("info");
-    expect(count.params["total"]).toBe(20);
-    expect(count.params["agree"]).toBe(20);
+    expect(count.params["total"]).toBe(32);
+    expect(count.params["agree"]).toBe(32);
     expect(fs.filter((f) => f.code === "GOLDEN_PENDING_CLINICIAN")).toHaveLength(1);
     expect(fs.find((f) => f.code === "GOLDEN_PENDING_CLINICIAN")!.params["count"]).toBe(20);
   });

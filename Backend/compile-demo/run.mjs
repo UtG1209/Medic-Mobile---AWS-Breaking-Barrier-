@@ -24,7 +24,7 @@ const LOGS = join(OUT, "logs");
 const TOOLS = join(HERE, "tools");
 const FIXTURE = join(BACKEND, "tests", "fixtures", "logic", "v1.json");
 const SETTINGS = join(HERE, "settings.demo.json");
-const GOLDEN = join(BACKEND, "tests", "fixtures", "logic", "golden-proposed.json");
+const GOLDEN = join(BACKEND, "tests", "fixtures", "logic", "golden-testcases.json");
 const PREVIEW_DIR = join(HERE, "preview");
 /** Per-flow-mode verification results (written by compile:verify) survive a recompile. */
 const VERIFY_MODES = join(OUT, "verify-modes");
