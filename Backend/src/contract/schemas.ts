@@ -202,7 +202,20 @@ export const LambdaRevisionEvent = z
   .strict();
 export type LambdaRevisionEvent = z.infer<typeof LambdaRevisionEvent>;
 
-export const LambdaEvent = z.union([LambdaSqsEvent, LambdaScheduledEvent, LambdaRevisionEvent]);
+// Officer agent asynchronous self-invoke (lambda mode): runs the officer agent after a version is saved.
+// Decouples the agent from the POST /versions response so API Gateway's 30 s timeout is not hit.
+export const LambdaOfficerEvent = z
+  .object({ source: z.literal("officer"), runId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/) })
+  .strict();
+export type LambdaOfficerEvent = z.infer<typeof LambdaOfficerEvent>;
+
+// Pipeline hand-off (lambda mode): the next step of a run, in a fresh invocation with its own 15 minutes.
+export const LambdaContinueEvent = z
+  .object({ source: z.literal("continue"), runId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/) })
+  .strict();
+export type LambdaContinueEvent = z.infer<typeof LambdaContinueEvent>;
+
+export const LambdaEvent = z.union([LambdaSqsEvent, LambdaScheduledEvent, LambdaRevisionEvent, LambdaOfficerEvent, LambdaContinueEvent]);
 export type LambdaEvent = z.infer<typeof LambdaEvent>;
 
 export const LambdaEventResponse = z.object({

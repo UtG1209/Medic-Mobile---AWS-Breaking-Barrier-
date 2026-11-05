@@ -42,7 +42,7 @@ describe("function", () => {
     const e = fn().Properties.Environment.Variables;
     expect(e.RUN_MODE).toBe("lambda");
     expect(e.LEASE_MS).toBe("960000");
-    expect(e.MODEL_ID).toBe("us.anthropic.claude-haiku-5-5");
+    expect(e.MODEL_ID).toBe("us.anthropic.claude-haiku-4-5-20251001-v1:0");
     expect(e.TMPDIR).toBe("/tmp");
     for (const k of ["TABLE_RUNS", "TABLE_STEPS", "TABLE_VERSIONS", "TABLE_COMMENTS", "TABLE_AUDIT", "ARTIFACT_BUCKET"]) {
       expect(e[k]).toBeDefined();

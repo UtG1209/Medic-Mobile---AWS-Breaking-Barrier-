@@ -24,6 +24,8 @@ export const PATCH_PATHS: Readonly<Record<string, readonly string[]>> = {
   SOURCE_PAGE_MISSING: SOURCES,
   UNCITED_PASSAGE: SOURCES,
   QUOTE_DROPS_NEGATION: SOURCES,
+  // A number not in the item's quotes: the fix is a citation that carries it (re-checked against the PDF).
+  UNGROUNDED_NUMBER: SOURCES,
   GUIDELINE_FILE_MISMATCH: ["/meta/guideline/file_sha256"],
   TEAM_TEXT_TO_CONFIRM: OPEN_Q,
   TEAM_THRESHOLD_UNCONFIRMED: OPEN_Q,
@@ -78,8 +80,33 @@ function openQuestionOpAllowed(codes: readonly string[], o: GuardOp, model: { op
  * applies to: ops under /open_questions are then judged by the target question's route_to.
  */
 export function opsAllowed(codes: readonly string[], ops: readonly GuardOp[], model?: { open_questions?: ReadonlyArray<{ route_to?: string }> }): boolean {
-  return ops.every((o) => {
-    if (model !== undefined && o.path.startsWith("/open_questions")) return openQuestionOpAllowed(codes, o, model);
-    return codes.some((c) => isPathAllowed(c, o.path));
+  return ops.every((o) => opAllowed(codes, o, model));
+}
+
+function opAllowed(codes: readonly string[], o: GuardOp, model?: { open_questions?: ReadonlyArray<{ route_to?: string }> }): boolean {
+  if (model !== undefined && o.path.startsWith("/open_questions")) return openQuestionOpAllowed(codes, o, model);
+  return codes.some((c) => isPathAllowed(c, o.path));
+}
+
+/**
+ * The allowed part of a patch: every op opsAllowed would accept on its own, with an open question's
+ * status and resolution kept only as a pair (a question is never left resolved without its answer, or
+ * answered but still open). `dropped` lists the paths left out. The kept ops still pass every later check.
+ */
+export function allowedOps<T extends GuardOp>(codes: readonly string[], ops: readonly T[], model: { open_questions?: ReadonlyArray<{ route_to?: string }> }): { kept: T[]; dropped: string[] } {
+  const ok = ops.filter((o) => opAllowed(codes, o, model));
+  const q = (o: GuardOp): { i: string; field: string } | undefined => {
+    const m = /^\/open_questions\/(0|[1-9]\d*)\/(status|resolution)$/.exec(o.path);
+    return m ? { i: m[1] as string, field: m[2] as string } : undefined;
+  };
+  const fields = new Map<string, Set<string>>();
+  for (const o of ok) {
+    const x = q(o);
+    if (x) fields.set(x.i, (fields.get(x.i) ?? new Set()).add(x.field));
+  }
+  const kept = ok.filter((o) => {
+    const x = q(o);
+    return x === undefined || fields.get(x.i)?.size === 2;
   });
+  return { kept, dropped: ops.filter((o) => !kept.includes(o)).map((o) => o.path) };
 }

@@ -5,7 +5,7 @@ import type { AgentState } from "../domain/types.js";
 import { parseModel } from "../logic/schema.js";
 import { checkBudget } from "../guard/budget.js";
 import { asDataBlock, flagInjected } from "../guard/injection.js";
-import { opsAllowed } from "../guard/patchPaths.js";
+import { allowedOps } from "../guard/patchPaths.js";
 import { redact } from "../guard/redact.js";
 import { cost, type PriceTable } from "../metrics/cost.js";
 import { type ModelClient } from "../model/modelClient.js";
@@ -33,7 +33,8 @@ const SYSTEM = [
   "You fix metadata problems in a clinical logic model, as a JSON patch (RFC 6902: add, replace, remove).",
   "You may only change citations (source page and quote), open question bookkeeping and file hashes named in the findings.",
   "You may also answer an open question, but only one whose route_to is program_officer and that a finding names: set its status to \"resolved\" and write its resolution (a clear sentence). Never touch a question routed to the clinician.",
-  "Answer from the guideline pages given in <data> blocks; if they do not settle it, make no change to that question.",
+  "Answer from the guideline pages given in <data> blocks; if they do not settle a clinical or workflow question, make no change to that question.",
+  "A question about the guideline's own details (publisher, edition, title, file) is still answered when the pages do not state them: say plainly what the pages show, for example \"The guideline pages do not state a publisher or edition; the document is recorded as not stating them.\" Answer it only through its resolution, never by writing under /meta.",
   "To answer an open question, write ONLY two operations: {\"op\":\"replace\",\"path\":\"/open_questions/N/status\",\"value\":\"resolved\"} and {\"op\":\"add\",\"path\":\"/open_questions/N/resolution\",\"value\":\"<the answer sentence>\"}. Use add (not replace) for resolution: an open question has no resolution key yet, and replace on a missing key fails. Put the whole answer inside the resolution text.",
   "Never add or change any other field to record an answer: no new keys on the question, nothing under /meta, no other section. One disallowed operation makes the whole patch be refused and nothing is fixed.",
   "Do not touch a citation (source page or quote) unless a finding names exactly that citation.",
@@ -216,7 +217,12 @@ export class OfficerAgent {
     }
     await setState({ costUsd: st.costUsd + spent });
     log.ops = value.ops;
-    const ops = value.ops as PatchOp[];
+    // Keep the allowed part of the patch: one stray op (say, under /meta) must not throw away valid answers.
+    const { kept: ops, dropped } = allowedOps(targeted.map((f) => f.code), value.ops as PatchOp[], loaded.model);
+    if (dropped.length > 0) {
+      // Paths only, never values: which part of the model the AI tried to change (for CloudWatch and the audit trail).
+      await this.audit(runId, "officer_agent_refused_paths", { n: base, attempt, paths: dropped.slice(0, 20).join(" "), keptCount: ops.length });
+    }
 
     const refuse = async (outcome: string, retry: boolean): Promise<"done" | "again"> => {
       log.verdict = outcome;
@@ -226,10 +232,9 @@ export class OfficerAgent {
       return escalate(outcome);
     };
 
-    if (!opsAllowed(targeted.map((f) => f.code), ops, loaded.model)) {
-      // Paths only, never values: which part of the model the AI tried to change (for CloudWatch and the audit trail).
-      await this.audit(runId, "officer_agent_refused_paths", { n: base, attempt, paths: ops.map((o) => o.path).slice(0, 20).join(" ") });
-      return refuse("patch touches paths the agent may not change", false);
+    if (ops.length === 0) {
+      // Nothing allowed is left: try once more (the next attempt sees the same findings), then escalate.
+      return refuse(dropped.length > 0 ? "patch touches paths the agent may not change" : "patch is empty", attempt < MAX_FIX_ATTEMPTS);
     }
     const applied = applyPatch(loaded.raw, ops);
     if (!applied.ok) return refuse(`patch does not apply: ${applied.reason}`, true);

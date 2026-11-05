@@ -34,7 +34,7 @@ async function main(): Promise<void> {
   mkdirSync(outDir, { recursive: true });
 
   const region = process.env.AWS_REGION || "us-west-2";
-  const modelId = process.env.FILL_MODEL_ID || process.env.MODEL_ID || "us.anthropic.claude-haiku-5-5";
+  const modelId = process.env.FILL_MODEL_ID || process.env.MODEL_ID || "us.anthropic.claude-haiku-4-5-20251001-v1:0";
   const runId = "fill-live";
 
   const artifacts = new MemoryArtifactStore();

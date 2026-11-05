@@ -139,8 +139,10 @@ def strands_judge(model_id: str, region: str, temperature: float) -> Judge:
 
     # streaming=False: the judge answers through a tool call, and Bedrock does not support tool use while
     # streaming for some models (Meta Llama, for one). The judge does not need streaming.
-    bedrock = BedrockModel(model_id=model_id, region_name=region, temperature=temperature, max_tokens=1024,
-                           streaming=False)
+    # Claude Haiku 5.5 rejects any temperature but its default (ERR-012; same rule as Backend/src/model/strands.ts).
+    # Its default is not zero, so the samples still vary. Every other model gets the requested temperature.
+    temp = {} if "claude-haiku-5" in model_id else {"temperature": temperature}
+    bedrock = BedrockModel(model_id=model_id, region_name=region, max_tokens=1024, streaming=False, **temp)
 
     class QuoteSupportEvaluator(OutputEvaluator):
         """OutputEvaluator.evaluate, keeping the judge's token usage for the cost record."""

@@ -20,7 +20,7 @@ AWS CDK v2 (TypeScript) for the data layer (`OrchestratorDataStack`), Lambda hos
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `uiOrigins` | `["http://localhost:5173"]` | Allowed CORS origins (a wildcard is rejected) |
-| `modelId` | `us.anthropic.claude-haiku-5-5` | Bedrock inference profile ID |
+| `modelId` | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | Bedrock inference profile ID |
 | `region` | `AWS_REGION`, else `us-west-2` | Target region |
 
 `uiOrigins` can be set in `cdk.json` as an array, or on the command line as one origin, a comma separated list or a JSON array string: `npx cdk synth -c uiOrigins=https://app.example.org` or `-c 'uiOrigins=["https://a.example","https://b.example"]'`. An entry must be `http(s)://host` with no path; a wildcard or a malformed value fails the synth (it never silently falls back to localhost). Only an unset or empty value gives the localhost default. `CDK_DEFAULT_REGION` is ignored on purpose, because the CDK CLI fills it with us-east-1 when no profile region is set.

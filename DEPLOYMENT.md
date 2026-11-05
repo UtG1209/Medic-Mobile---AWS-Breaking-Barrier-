@@ -57,7 +57,7 @@ Not deployed (does not exist in the CDK yet): authentication, the compile build 
 
 Apple Silicon builds the ARM64 image natively. On an amd64 host Docker needs QEMU: `docker run --privileged --rm tonistiigi/binfmt --install arm64`.
 
-Confirm the model ID is still available before you deploy (the code default is `us.anthropic.claude-haiku-5-5`):
+Confirm the model ID is still available before you deploy (the code default is `us.anthropic.claude-haiku-4-5-20251001-v1:0`):
 
 ```bash
 aws bedrock list-inference-profiles --region us-west-2 --query "inferenceProfileSummaries[].inferenceProfileId"
@@ -109,7 +109,7 @@ npx cdk bootstrap aws://<ACCOUNT_ID>/us-west-2
 
 | Context key | Default | Notes |
 |---|---|---|
-| `modelId` | `us.anthropic.claude-haiku-5-5` | Must be a `us.` inference profile you have access to |
+| `modelId` | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | Must be a `us.` inference profile you have access to |
 | `uiOrigins` | `http://localhost:5173` | Origin(s) of your UI, for CORS on the API **and** the S3 bucket. One origin, a comma-separated list, or a JSON array string. `http(s)://host`, no path, no `*`. A malformed value fails the synth. |
 | `prices` | none | Optional JSON, model ID to `{inPerMTok, outPerMTok}`, enables cost figures |
 | `modelBackend` | `bedrock` | `agentcore` is optional and unapproved |

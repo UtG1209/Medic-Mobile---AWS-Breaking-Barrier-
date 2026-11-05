@@ -37,6 +37,11 @@ export interface OrchestratorOptions {
   // Called (and awaited, errors dropped) once a run has reached finalState and its lease is released, and by
   // resumeAll for every run waiting in awaiting_officer. Must be idempotent; production wires the officer agent.
   onFinalState?: (runId: string) => Promise<void>;
+  // Lambda mode: after each step this invocation runs, stop and call this (lease released first) so the next step
+  // starts in a fresh invocation with its own 15 minutes. One invocation for the whole pipeline (several model calls
+  // of up to 6 minutes each) runs past the Lambda timeout and fill_logic is cut off every time. If the hand-off is
+  // lost, the resume sweep picks the run up (listResumable). Absent: every step runs in this call.
+  continueElsewhere?: (runId: string) => Promise<void>;
   // One line per state change and per unexpected error. Default: no logging.
   log?: Log;
 }
@@ -51,6 +56,7 @@ export class Orchestrator {
   private readonly runnerOpts: Omit<RunStepOptions, "firstAttempt">;
   private readonly now: () => number;
   private readonly maxTotalAttempts: number;
+  private readonly continueElsewhere?: (runId: string) => Promise<void>;
   private readonly finalState: RunState;
   private readonly onFinalState: ((runId: string) => Promise<void>) | undefined;
   private readonly log: Log;
@@ -72,6 +78,7 @@ export class Orchestrator {
     this.maxTotalAttempts = opts.maxTotalAttempts ?? DEFAULT_MAX_TOTAL_ATTEMPTS;
     this.finalState = opts.finalState ?? "in_review";
     this.onFinalState = opts.onFinalState;
+    this.continueElsewhere = opts.continueElsewhere;
     this.log = safeLog(opts.log);
   }
 
@@ -111,14 +118,22 @@ export class Orchestrator {
     if (this.active.has(runId)) return;
     this.active.add(runId);
     if (this.active.size === 1) this.statusChangedAt = this.now();
-    let reachedFinal = false;
+    let outcome: "final" | "handoff" | "stop" = "stop";
     try {
-      reachedFinal = await this.advanceHeld(runId);
+      outcome = await this.advanceHeld(runId);
     } finally {
       this.active.delete(runId);
       if (this.active.size === 0) this.statusChangedAt = this.now();
     }
-    if (reachedFinal) await this.fireFinal(runId);
+    if (outcome === "final") await this.fireFinal(runId);
+    if (outcome === "handoff" && this.continueElsewhere) {
+      try {
+        await this.continueElsewhere(runId);
+      } catch (e) {
+        // The run has no lease, so the resume sweep continues it.
+        this.log("hand-off to the next invocation failed; the resume sweep will continue the run", { runId, error: errorMessage(e) });
+      }
+    }
   }
 
   private async fireFinal(runId: string): Promise<void> {
@@ -135,29 +150,32 @@ export class Orchestrator {
     }
   }
 
-  private async advanceHeld(runId: string): Promise<boolean> {
-    if (!(await this.renewLease(runId))) return false;
+  private async advanceHeld(runId: string): Promise<"final" | "handoff" | "stop"> {
+    if (!(await this.renewLease(runId))) return "stop";
     let threw = false;
     let current: Step | undefined;
+    // Whether this call ran a step (rather than only skipping steps that had already succeeded).
+    let ran = false;
     try {
       let run = await this.mustGet(runId);
       if (run.state === "created") {
         const first = this.steps[0];
-        if (!first) return false;
+        if (!first) return "stop";
         run = await this.transition(run, first.runState);
       }
 
       for (;;) {
         const index = this.steps.findIndex((s) => s.runState === run.state);
-        if (index === -1) return false;
+        if (index === -1) return "stop";
         const step = this.steps[index]!;
         current = step;
         // Another owner may have taken the run after our lease lapsed: stop quietly.
-        if (!(await this.renewLease(runId))) return false;
+        if (!(await this.renewLease(runId))) return "stop";
 
         const records = (await this.store.listSteps(runId)).filter((r) => r.step === step.name);
         // A succeeded record means the step's outputs already exist; skip it.
         if (!records.some((r) => r.status === "succeeded")) {
+          ran = true;
           for (const r of records.filter((r) => r.status === "running")) {
             await this.store.updateStep(runId, step.name, r.attempt, {
               status: "failed",
@@ -171,9 +189,9 @@ export class Orchestrator {
           const remaining = this.maxTotalAttempts - used;
           if (remaining <= 0) {
             await this.failCapped(run, step, firstAttempt, used);
-            if (!(await this.renewLease(runId))) return false;
+            if (!(await this.renewLease(runId))) return "stop";
             await this.transition(run, "failed", { currentStep: step.name });
-            return false;
+            return "stop";
           }
           const ctx = { run, store: this.store, artifacts: this.artifacts, model: this.model, now: this.now };
           const rec = await runStep(step, ctx, {
@@ -181,15 +199,16 @@ export class Orchestrator {
             firstAttempt,
             maxAttempts: Math.min(this.runnerOpts.maxAttempts, remaining),
           });
-          if (!(await this.renewLease(runId))) return false;
+          if (!(await this.renewLease(runId))) return "stop";
           if (rec.status === "failed") {
             await this.transition(run, "failed", { currentStep: step.name });
-            return false;
+            return "stop";
           }
         }
 
         run = await this.transition(run, this.steps[index + 1]?.runState ?? this.finalState);
-        if (index + 1 >= this.steps.length) return true;
+        if (index + 1 >= this.steps.length) return "final";
+        if (ran && this.continueElsewhere) return "handoff";
       }
     } catch (e) {
       threw = true;

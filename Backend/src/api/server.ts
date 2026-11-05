@@ -25,6 +25,8 @@ import {
   InvocationRequest,
   LambdaRevisionEvent,
   LambdaScheduledEvent,
+  LambdaOfficerEvent,
+  LambdaContinueEvent,
   LambdaSqsEnvelope,
   LambdaSqsRecord,
   RejectRequest,
@@ -50,6 +52,8 @@ export interface OrchestratorPort {
   resume(runId: string): Promise<void>;
   prepareResume(runId: string): Promise<void>;
   onUploaded(runId: string): Promise<void>;
+  // Runs the run's next steps (used by the lambda-mode pipeline hand-off). Optional so test doubles need not have it.
+  advance?(runId: string): Promise<void>;
   resumeAll(): Promise<void>;
   activeCount(): number;
   lastStatusChange(): number | undefined;
@@ -84,6 +88,8 @@ export interface ServerDeps {
   backgroundDeadlineMs?: number;
   // Called after a clinician reject returned the run to awaiting_officer (re-triggers the officer agent). Errors are logged.
   onRejected?: (runId: string) => Promise<void>;
+  // Called by the POST /events handler (lambda mode) when an officer async-invoke event arrives.
+  onOfficerEvent?: (runId: string) => Promise<void>;
   // Chat settings; without them POST /runs/:id/chat answers 503.
   chat?: ClinicianDeps["chat"];
 }
@@ -556,6 +562,36 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
         }
         const res: LambdaEventResponse = { batchItemFailures: [] };
         return reply.code(200).send(res);
+      }
+      const officer = LambdaOfficerEvent.safeParse(req.body);
+      if (officer.success) {
+        // Officer agent async self-invoke: decoupled from POST /versions so the route responds before the
+        // agent runs and does not hit the API Gateway 30 s integration timeout.
+        const { runId } = officer.data;
+        if (deps.onOfficerEvent) {
+          const work = deps.onOfficerEvent(runId).catch((e: unknown) => {
+            req.log.error({ runId, errName: errName(e) }, "officer agent event threw");
+          });
+          if (!(await withDeadline(work, eventsDeadline))) {
+            req.log.error({ runId }, "officer agent event reached the events deadline");
+          }
+        }
+        return reply.code(200).send({ ok: true });
+      }
+      const cont = LambdaContinueEvent.safeParse(req.body);
+      if (cont.success) {
+        // Pipeline hand-off: the next step in this fresh invocation. Errors are recorded on the run by the engine;
+        // a run left unfinished keeps no lease, so the resume sweep continues it.
+        const { runId } = cont.data;
+        if (orchestrator.advance) {
+          const work = orchestrator.advance(runId).catch((e: unknown) => {
+            req.log.error({ runId, errName: errName(e) }, "pipeline continue event threw");
+          });
+          if (!(await withDeadline(work, eventsDeadline))) {
+            req.log.error({ runId }, "pipeline continue event reached the events deadline");
+          }
+        }
+        return reply.code(200).send({ ok: true });
       }
       return reply.code(400).send({ error: "invalid_request", issues: ["unrecognised event"] });
     });
