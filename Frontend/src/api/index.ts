@@ -494,6 +494,27 @@ export async function approve(id: string): Promise<Workflow> {
   return mutate(id, x => wf.approveAll(x, locked));
 }
 
+/** True once the officer agent has given up on version n (it leaves an escalation comment): nothing more will happen, so do not wait. */
+async function agentGaveUp(base: string, n: number): Promise<boolean> {
+  try {
+    const cs = await call<{ itemRef: string }[]>(base + "/versions/" + n + "/comments");
+    return cs.some(c => c.itemRef === "agent:escalation");
+  } catch {
+    return false;
+  }
+}
+
+/** Poll until the version is no longer waiting for the officer: up to 60 s, but stop as soon as the agent has given up (it takes seconds, not a minute). */
+async function waitForOfficer(base: string, n: number, first: StatusView): Promise<StatusView> {
+  let st = first;
+  for (let i = 0; i < 60 && st.status === "awaiting_officer"; i++) {
+    await wait(1000);
+    st = await call<StatusView>(base + "/versions/" + n + "/status");
+    if (st.status === "awaiting_officer" && i % 2 === 1 && (await agentGaveUp(base, n))) break;
+  }
+  return st;
+}
+
 /** Save the clinician's version, wait for the backend's officer agent to sign it, then sign as the clinician. */
 async function signOnBackend(w: Workflow): Promise<{ n: number; modelSha: string }> {
   const r = w.remote!, base = "/runs/" + r.runId;
@@ -503,20 +524,12 @@ async function signOnBackend(w: Workflow): Promise<{ n: number; modelSha: string
   const note = "Clinician review in the app: " + edits + " edit" + (edits === 1 ? "" : "s") + " to the rules, open questions answered, checks reviewed.";
   const body: Spec = { ...w.model, meta: { ...w.model.meta, version: parent + 1, parent_version: parent, created_at: new Date().toISOString(), created_by: me(), change_note: note } };
   let { n } = await call<{ n: number }>(base + "/versions", { method: "POST", body: JSON.stringify({ parentVersion: parent, body, author: me(), authorRole: "clinician" }) });
-  let st = await call<StatusView>(base + "/versions/" + n + "/status");
-  for (let i = 0; i < 60 && st.status === "awaiting_officer"; i++) {
-    await wait(1000);
-    st = await call<StatusView>(base + "/versions/" + n + "/status");
-  }
+  let st = await waitForOfficer(base, n, await call<StatusView>(base + "/versions/" + n + "/status"));
   // The officer agent may save a newer version of its own (a fix) and sign that one: follow the chain to the newest version.
   for (let hop = 0; hop < 5 && st.status === "superseded"; hop++) {
     const all = await call<VersionRec[]>(base + "/versions");
     n = all[all.length - 1].n;
-    st = await call<StatusView>(base + "/versions/" + n + "/status");
-    for (let i = 0; i < 60 && st.status === "awaiting_officer"; i++) {
-      await wait(1000);
-      st = await call<StatusView>(base + "/versions/" + n + "/status");
-    }
+    st = await waitForOfficer(base, n, await call<StatusView>(base + "/versions/" + n + "/status"));
   }
   if (st.status !== "awaiting_clinician") {
     throw new OfficerNotSigned("Version " + n + " was saved, but the officer agent has not signed it (status: " + st.status.replace(/_/g, " ") + "). It may have left a comment on the version; check its findings.");
