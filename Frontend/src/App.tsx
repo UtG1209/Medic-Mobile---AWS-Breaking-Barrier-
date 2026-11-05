@@ -5,6 +5,7 @@ import { checksOf, initialWorkflow } from "./domain/workflow";
 import type { Role, Workflow } from "./domain/types";
 import { ROLE_NAME, type Actions } from "./actions";
 import { NextStrip, STAGES } from "./components/NextStrip";
+import { ThemeToggle } from "./components/ThemeToggle";
 import { GuidelinesScreen } from "./screens/GuidelinesScreen";
 import { ReviewScreen } from "./screens/ReviewScreen";
 import { ReleaseScreen } from "./screens/ReleaseScreen";
@@ -133,6 +134,7 @@ export default function App() {
               {roles.map(k => <option key={k} value={k}>{ROLE_NAME[k]}</option>)}
             </select>
           </label>
+          <ThemeToggle />
           <span className="tb-av" title={(user ? user.email + " · " : "") + "Viewing as " + ROLE_NAME[role]}><Icon name="person" size={20} fill /></span>
           {AUTH && user ? <span className="tb-user"><span className="note">{user.email}</span><button type="button" className="lnk" onClick={signOut}>Sign out</button></span> : null}
         </header>

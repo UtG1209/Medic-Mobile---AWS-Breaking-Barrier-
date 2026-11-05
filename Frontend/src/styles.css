@@ -1047,3 +1047,61 @@ h1.display,.rvhead h1.display{font-weight:600;letter-spacing:-.8px}
 .signin-card h1{margin:0}
 .signin-card .btn{justify-self:start;min-height:44px;padding:10px 20px}
 .tb-user{display:inline-flex;align-items:center;gap:12px}
+
+/* ===== Dark theme =====
+   Chosen on the top bar (data-theme="dark" on <html>, set before the first paint by index.html). Same cool slate and
+   clinical blue as the light theme, with a blue undertone instead of pure black; cards are lighter than the page, the
+   way the light theme's white cards sit on grey. The blue is split in two: a deep fill for buttons that carry white
+   text (--color-primary) and a light blue for links, outlines and small text (--accent). The clinical outcome colours
+   (pink, yellow, green, amber) keep their hues on dark tints. Every text pair is at least 4.5:1. */
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --s-lowest:#18222A; --s:#0F161C; --s-low:#131C23; --s-cont:#1D2A33; --s-high:#25343E; --s-highest:#2D3E4A;
+  --ink:#E6EBEF; --muted:#B5C0C9; --subtle:#8E9BA6; --line:#2C3A45;
+  --color-primary:#0B6AA3; --color-primary-container:#0D78B8; --accent:#86C8F0; --color-secondary:#9BA6BA;
+  --color-secondary-container:#233B54; --on-sec:#DCE7FA;
+  --color-tertiary-fixed:#1C4A45; --color-on-tertiary-fixed:#BDF3EB;
+  --color-error:#FFB4AB; --color-error-container:#5C1F1B;
+  --chg:#E6B55C; --chg-bg:#3A2D12; --add:#5FD2C1; --add-bg:#12342F;
+  --pink:#F28DB0; --pink-bg:#3B2030; --yellow:#E6C24F; --yellow-bg:#38310F; --green:#6FD39B; --green-bg:#15301F;
+  --pass:#6FD39B; --pass-bg:#15301F; --pass-line:#2E6B49;
+  --sh-sm:0 1px 2px rgba(0,0,0,.45); --sh-header:0 1px 8px rgba(0,0,0,.4);
+  --sh-md:0 4px 6px -1px rgba(0,0,0,.5),0 2px 4px -2px rgba(0,0,0,.5); --sh-xl:0 20px 25px -5px rgba(0,0,0,.5),0 8px 10px -6px rgba(0,0,0,.5);
+}
+/* Text and outlines in the blue: the light blue, not the fill blue (the fill is too dim to read as text). */
+:root[data-theme="dark"] .sn-brand,:root[data-theme="dark"] .eyebrow .eb-a,:root[data-theme="dark"] .ctag,
+:root[data-theme="dark"] .qnum,:root[data-theme="dark"] .cmore,:root[data-theme="dark"] .lnk,:root[data-theme="dark"] .linkb,
+:root[data-theme="dark"] .chklink,:root[data-theme="dark"] .banner a,:root[data-theme="dark"] .note a{color:var(--accent)}
+:root[data-theme="dark"] .sn-nav a:focus-visible,:root[data-theme="dark"] .step:focus-visible,:root[data-theme="dark"] .btn:focus-visible,
+:root[data-theme="dark"] .chipb:focus-visible,:root[data-theme="dark"] .cin input:focus,:root[data-theme="dark"] textarea:focus,
+:root[data-theme="dark"] .cwid.on{outline-color:var(--accent)}
+:root[data-theme="dark"] .pstep.running .pdot{border-color:var(--accent);border-top-color:transparent}
+:root[data-theme="dark"] .viewtgl button[aria-pressed=true]{background:var(--color-primary);color:#fff}
+/* Fills of the light tint (tiles, banners, pills, badges) carry dark text in the light theme; light text here. */
+:root[data-theme="dark"] .stile.blue,:root[data-theme="dark"] .banner,:root[data-theme="dark"] .pill.warn,
+:root[data-theme="dark"] .badge.ed,:root[data-theme="dark"] .badge.ai2,:root[data-theme="dark"] .badge.fl,
+:root[data-theme="dark"] .rvwhy,:root[data-theme="dark"] .tcount,:root[data-theme="dark"] .cico.warn{color:var(--on-sec)}
+/* Surfaces that were written as light literals. */
+:root[data-theme="dark"] .topbar{background:rgba(15,22,28,.82)}
+:root[data-theme="dark"] .libitem.on,:root[data-theme="dark"] .nx.mine,:root[data-theme="dark"] .rissues{background:var(--s-cont)}
+:root[data-theme="dark"] .rtable tr.sel td,:root[data-theme="dark"] .rtable > tbody.sel td{background:#1A3640}
+:root[data-theme="dark"] .cans{color:var(--add)}
+:root[data-theme="dark"] .tlight.green .tl-dot{background:#3DBE8B;box-shadow:0 0 0 4px #15301F}
+:root[data-theme="dark"] .tlight.amber .tl-dot{background:#E3A912;box-shadow:0 0 0 4px #3A2D12}
+:root[data-theme="dark"] .badge.changed{border-color:#7A5B1C}
+:root[data-theme="dark"] .issue.warning,:root[data-theme="dark"] .tagnew{border-color:#7A5B1C}
+:root[data-theme="dark"] .banner.good{border-color:#2E6B49}
+/* On the blue hand-over card the highlighted number is the bright mint of the light theme (the token is a dark teal here). */
+:root[data-theme="dark"] .score-rows .accent dd{color:#9BF3E8}
+/* The decision flow's own controls and background. */
+:root[data-theme="dark"] .react-flow{
+  --xy-background-color:var(--bg); --xy-background-pattern-color:#2A3842;
+  --xy-controls-button-background-color:var(--s-cont); --xy-controls-button-background-color-hover:var(--s-high);
+  --xy-controls-button-color:var(--ink); --xy-controls-button-border-color:var(--line);
+}
+:root[data-theme="dark"] .react-flow__controls-button svg{fill:currentColor}
+/* The top bar switch. */
+.tb-theme{width:40px;height:40px;border-radius:12px;border:0;background:var(--s-low);color:var(--muted);display:grid;place-items:center;cursor:pointer;padding:0}
+.tb-theme:hover{background:var(--s-cont);color:var(--ink)}
+.tb-theme:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px}
+:root[data-theme="dark"] .tb-theme:focus-visible{outline-color:var(--accent)}
