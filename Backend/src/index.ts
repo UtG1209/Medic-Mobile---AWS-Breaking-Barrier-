@@ -26,6 +26,8 @@ import { withScoring } from "./scoring/scoreVersion.js";
 import { createChecksStep } from "./steps/checks.js";
 import { createExtractStep } from "./steps/extract.js";
 import { createFillLogicStep } from "./steps/fillLogic.js";
+import { goldenNamingHint } from "./steps/goldenNames.js";
+import { defaultCheckInputs } from "./signoff/checkInputs.js";
 import { createIngestStep, createPdfInfoPageCount, defaultExec } from "./steps/ingest.js";
 import { parseModelValidator } from "./steps/logicModelValidator.js";
 import { unpricedModelIds } from "./metrics/cost.js";
@@ -96,7 +98,13 @@ async function main(): Promise<void> {
         pdfPageCount: createPdfInfoPageCount(),
       }),
       createExtractStep({ modelId: cfg.modelId, promptPath: cfg.extractPrompt }),
-      createFillLogicStep({ validator: parseModelValidator, modelId: cfg.fillModelId, promptPath: cfg.fillPrompt }),
+      createFillLogicStep({
+        validator: parseModelValidator,
+        modelId: cfg.fillModelId,
+        promptPath: cfg.fillPrompt,
+        // The ids the confirmed test cases use, from the same source the checks read (the run's file, else the bundled one).
+        namingHint: async (runId) => goldenNamingHint((await defaultCheckInputs(artifacts)(runId)).goldenCases),
+      }),
       // Automatic checks on version 1 (BR-11); the run then waits for the program officer (DEC-019).
       // With JUDGE_MODEL_ID set, quote-support scoring runs after them (advisory; a failure never stops the run).
       cfg.scoring

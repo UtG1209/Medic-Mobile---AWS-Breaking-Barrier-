@@ -14,6 +14,8 @@ export interface FillLogicOptions {
   /** System prompt file (extraction/fill_prompt.txt by default, see config FILL_PROMPT). */
   promptPath: string;
   maxTokens?: number;
+  /** The names the confirmed test cases use, as text for the prompt (see goldenNames.ts). A failure here never fails the step. */
+  namingHint?: (runId: string) => Promise<string | undefined>;
   /** Logic model meta.pathway_id; defaults to a slug of the guideline source id. */
   pathwayId?: string;
   guideline?: { title?: string; publisher?: string; edition?: string };
@@ -40,12 +42,13 @@ function slug(s: string | undefined): string | undefined {
 }
 
 /** The extraction as the model sees it: thresholds carry their index, which is all the draft may write. */
-function extractionContent(runId: string, ex: ExtractionOutput): ModelContent[] {
+function extractionContent(runId: string, ex: ExtractionOutput, hint?: string): ModelContent[] {
   const thresholds = ex.thresholds.map((t, index) => ({ index, ...t }));
   return [
     { type: "text", text: `Run: ${runId}\nMode: new_guideline\nThe guideline extraction follows. Refer to its items by id, and to thresholds by index.` },
     { type: "text", text: "Thresholds (use {\"threshold\": index}):\n" + JSON.stringify(thresholds) },
     { type: "text", text: "Extraction:\n" + JSON.stringify({ ...ex, thresholds: undefined }) },
+    ...(hint !== undefined ? [{ type: "text" as const, text: hint }] : []),
     { type: "text", text: "Return one JSON object: the draft." },
   ];
 }
@@ -88,7 +91,8 @@ export function createFillLogicStep(opts: FillLogicOptions): Step {
 
       const resolveOpts = await resolveOptions(ctx, opts);
       const system = await readFile(opts.promptPath, "utf8");
-      const content = extractionContent(runId, ex);
+      const hint = await opts.namingHint?.(runId).catch(() => undefined);
+      const content = extractionContent(runId, ex, hint);
       const maxTokens = opts.maxTokens ?? FILL_MAX_TOKENS;
 
       const call = async (

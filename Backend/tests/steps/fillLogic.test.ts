@@ -169,6 +169,21 @@ describe("fill_logic step", () => {
     expect(model.calls.length).toBeGreaterThan(0);
   });
 
+  it("adds the naming hint to the prompt content; a failing hint never fails the step", async () => {
+    const hinted = createFillLogicStep({ validator: parseModelValidator, modelId: "us.test.model-v1:0", promptPath, pathwayId: "cough_fast_breathing", namingHint: async () => "NAMES: age_months, refer_urgent" });
+    const a = await setup();
+    await hinted.run(a.ctx);
+    const texts = (a.model.calls[0]!.content as { type: string; text?: string }[]).map((c) => c.text ?? "");
+    expect(texts.some((t) => t.includes("NAMES: age_months, refer_urgent"))).toBe(true);
+    expect(texts[texts.length - 1]).toBe("Return one JSON object: the draft.");
+
+    const failing = createFillLogicStep({ validator: parseModelValidator, modelId: "us.test.model-v1:0", promptPath, pathwayId: "cough_fast_breathing", namingHint: async () => { throw new Error("no golden file"); } });
+    const b = await setup();
+    await expect(failing.run(b.ctx)).resolves.toBeDefined();
+    const plain = (b.model.calls[0]!.content as { type: string; text?: string }[]).map((c) => c.text ?? "");
+    expect(plain.some((t) => t.includes("NAMES"))).toBe(false);
+  });
+
   it("does not repair a transient model error: it is rethrown for the runner to retry", async () => {
     const { ctx, model } = await setup([new TransientError("throttled")]);
     await expect(step.run(ctx)).rejects.toBeInstanceOf(TransientError);
