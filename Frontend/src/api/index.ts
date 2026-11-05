@@ -12,7 +12,7 @@ import { FALLBACK_TEXT } from "../domain/agent";
 import { sampleScores } from "../domain/scores";
 import { AUTH, currentUser, idToken, signIn } from "../auth";
 import { item } from "../../../shared/pathway/index.ts";
-import type { AuditRow, CrossFlags, Escalation, Guideline, GuidelineType, ItemId, Model, Patch, QuoteScores, Spec, Workflow } from "../domain/types";
+import type { AuditRow, BackendGolden, CrossFlags, Escalation, Guideline, GuidelineType, ItemId, Model, Patch, QuoteScores, Spec, Workflow } from "../domain/types";
 
 export const API_URL: string | undefined = import.meta.env.VITE_API_URL?.replace(/\/+$/, "") || undefined;
 /** True when guidelines come from the backend pipeline rather than sample data. */
@@ -202,6 +202,20 @@ async function loadScores(runId: string, n: number, model: Model): Promise<Quote
   }
 }
 
+/* ---------- Golden cases (the backend runs them; the card shows its result) ---------- */
+/** The backend's golden-case result of version n, read from its findings (both audiences carry the same ones). Null when it reported none. */
+export function goldenFrom(n: number, findings: readonly { severity: string; message: string; check: string }[]): BackendGolden | null {
+  const own = findings.filter(f => f.check === "goldenCases");
+  if (!own.length) return null;
+  const seen = new Set<string>();
+  const uniq = own.filter(f => (seen.has(f.message) ? false : (seen.add(f.message), true)));
+  const count = uniq.map(f => /(\d+) test cases? (?:was|were) run through the draft: (\d+) give the expected result/.exec(f.message)).find(Boolean);
+  const issues = uniq
+    .filter(f => f.severity !== "info")
+    .map(f => ({ sev: (f.severity === "blocking" ? "blocking" : "warning") as "blocking" | "warning", text: f.message }));
+  return { n, ...(count ? { run: Number(count[1]), passed: Number(count[2]) } : {}), issues };
+}
+
 /* ---------- Cross check (advisory) ---------- */
 /** The backend's cross-check flags of version n. Never throws: null leaves the stage saying it could not load. */
 async function loadCross(runId: string, n: number): Promise<CrossFlags | null> {
@@ -238,7 +252,7 @@ async function loadEscalation(runId: string): Promise<Escalation | null> {
   }
 }
 /** The workflow with the cross check of a newly loaded backend version. */
-const withCross = (w: Workflow, cross: CrossFlags | null): Workflow => ({ ...w, evidence: { ...w.evidence, cross } });
+const withCross = (w: Workflow, cross: CrossFlags | null): Workflow => ({ ...w, evidence: { ...w.evidence, cross, golden: w.remote ? goldenFrom(w.remote.n, w.remote.findings) : null } });
 class OfficerNotSigned extends Error {}
 
 /* ---------- Workflow ---------- */
@@ -259,7 +273,7 @@ export async function createDraft(args: { guidelineId: string; pathway: string; 
     ]);
     const flat = (f: FindingsView, role: "clinician" | "program_officer") => f.groups.flatMap(gr => gr.findings.map(x => ({ severity: gr.severity, message: x.message, check: x.check, role })));
     const remote = { runId: g.id, n: last.n, modelSha: fc.modelSha, base: clone(model), claimText: fc.claimText, findings: [...flat(fc, "clinician"), ...flat(fo, "program_officer")] };
-    const evidence = { pages: null, pagesFrom: "Guideline text stays in the backend; its own quote check is in the backend findings", draftB: null, draftBFrom: "The backend runs the cross check itself", cross };
+    const evidence = { pages: null, pagesFrom: "Guideline text stays in the backend; its own quote check is in the backend findings", draftB: null, draftBFrom: "The backend runs the cross check itself", cross, golden: goldenFrom(last.n, remote.findings) };
     workflows[id] = wf.createDraft(wf.initialWorkflow(id), { id: g.id, name: g.name, pathway: args.pathway, pages: args.pages }, {
       model, evidence, remote,
       event: "Loaded logic model version " + last.n + " from the backend (run " + g.id + ")",
@@ -494,6 +508,27 @@ export async function approve(id: string): Promise<Workflow> {
   return mutate(id, x => wf.approveAll(x, locked));
 }
 
+/** True once the officer agent has given up on version n (it leaves an escalation comment): nothing more will happen, so do not wait. */
+async function agentGaveUp(base: string, n: number): Promise<boolean> {
+  try {
+    const cs = await call<{ itemRef: string }[]>(base + "/versions/" + n + "/comments");
+    return cs.some(c => c.itemRef === "agent:escalation");
+  } catch {
+    return false;
+  }
+}
+
+/** Poll until the version is no longer waiting for the officer: up to 60 s, but stop as soon as the agent has given up (it takes seconds, not a minute). */
+async function waitForOfficer(base: string, n: number, first: StatusView): Promise<StatusView> {
+  let st = first;
+  for (let i = 0; i < 60 && st.status === "awaiting_officer"; i++) {
+    await wait(1000);
+    st = await call<StatusView>(base + "/versions/" + n + "/status");
+    if (st.status === "awaiting_officer" && i % 2 === 1 && (await agentGaveUp(base, n))) break;
+  }
+  return st;
+}
+
 /** Save the clinician's version, wait for the backend's officer agent to sign it, then sign as the clinician. */
 async function signOnBackend(w: Workflow): Promise<{ n: number; modelSha: string }> {
   const r = w.remote!, base = "/runs/" + r.runId;
@@ -503,20 +538,12 @@ async function signOnBackend(w: Workflow): Promise<{ n: number; modelSha: string
   const note = "Clinician review in the app: " + edits + " edit" + (edits === 1 ? "" : "s") + " to the rules, open questions answered, checks reviewed.";
   const body: Spec = { ...w.model, meta: { ...w.model.meta, version: parent + 1, parent_version: parent, created_at: new Date().toISOString(), created_by: me(), change_note: note } };
   let { n } = await call<{ n: number }>(base + "/versions", { method: "POST", body: JSON.stringify({ parentVersion: parent, body, author: me(), authorRole: "clinician" }) });
-  let st = await call<StatusView>(base + "/versions/" + n + "/status");
-  for (let i = 0; i < 60 && st.status === "awaiting_officer"; i++) {
-    await wait(1000);
-    st = await call<StatusView>(base + "/versions/" + n + "/status");
-  }
+  let st = await waitForOfficer(base, n, await call<StatusView>(base + "/versions/" + n + "/status"));
   // The officer agent may save a newer version of its own (a fix) and sign that one: follow the chain to the newest version.
   for (let hop = 0; hop < 5 && st.status === "superseded"; hop++) {
     const all = await call<VersionRec[]>(base + "/versions");
     n = all[all.length - 1].n;
-    st = await call<StatusView>(base + "/versions/" + n + "/status");
-    for (let i = 0; i < 60 && st.status === "awaiting_officer"; i++) {
-      await wait(1000);
-      st = await call<StatusView>(base + "/versions/" + n + "/status");
-    }
+    st = await waitForOfficer(base, n, await call<StatusView>(base + "/versions/" + n + "/status"));
   }
   if (st.status !== "awaiting_clinician") {
     throw new OfficerNotSigned("Version " + n + " was saved, but the officer agent has not signed it (status: " + st.status.replace(/_/g, " ") + "). It may have left a comment on the version; check its findings.");

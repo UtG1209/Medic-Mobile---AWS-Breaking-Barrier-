@@ -78,6 +78,21 @@ export function parseAgeBand(text: string | null | undefined): Band | undefined 
 }
 
 /**
+ * The child's age variable. The extraction prompt does not say what to write in its unit, so models write "months",
+ * "months/years", or leave it empty and put the range in range_hint ("2 months up to 5 years"). It is the variable
+ * whose unit is months, or one labelled as age whose range reads as an age range. The form asks age in months.
+ */
+export function isAgeVariable(v: { id: string; label: string; unit?: string | null; range_hint?: string | null }): boolean {
+  if (normalizeUnit(v.unit) === "months") return true;
+  return /(^|[^a-z])age([^a-z]|$)/i.test(`${v.id} ${v.label}`) && parseAgeBand(v.range_hint) !== undefined;
+}
+
+/** The unit of a variable as the form uses it: months for the age variable, else the normalised unit. */
+export function variableUnit(v: { id: string; label: string; unit?: string | null; range_hint?: string | null }): string | undefined {
+  return isAgeVariable(v) ? "months" : normalizeUnit(v.unit);
+}
+
+/**
  * "Age 2 months up to 12 months—1 tablet; Age 12 months up to 5 years—2 tablets", optionally with
  * "(total 10 tabs)" after a dose. Every segment must parse, or the result is undefined.
  */
@@ -243,7 +258,7 @@ export function resolveDraft(draft: Draft, ex: Ex, opts: ResolveOptions): Resolv
       if (v === undefined) problem(`Question "${q.id}": variable_id "${q.variable_id}" is not in extraction.variables.`);
       else {
         src.push(...v.src);
-        unit = normalizeUnit(v.unit);
+        unit = variableUnit(v);
         const hint = v.type_hint.toLowerCase();
         const expected = hint === "boolean" ? "yes_no" : hint === "integer" ? "integer" : undefined;
         if (expected !== undefined && expected !== q.answer_type) {
@@ -281,7 +296,7 @@ export function resolveDraft(draft: Draft, ex: Ex, opts: ResolveOptions): Resolv
   });
 
   // ---- age question and scope ----
-  const ageVariables = ex.variables.filter((v) => normalizeUnit(v.unit) === "months");
+  const ageVariables = ex.variables.filter(isAgeVariable);
   const ageVariable = ageVariables.find((v) => /age/i.test(`${v.id} ${v.label}`)) ?? ageVariables[0];
   const ageQuestionId = ageVariable !== undefined ? qByVariable.get(ageVariable.id) : undefined;
   const ageQuestion = ageQuestionId !== undefined ? qById.get(ageQuestionId) : undefined;

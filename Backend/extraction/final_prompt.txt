@@ -42,6 +42,12 @@ HOW TO COPY
   block text exactly as given when you quote it.
 - Every item cites at least one block_id and a quote copied exactly from
   that block's text.
+- When a cut-off, dose or condition applies to an age band or another
+  group (for example "In a child age 2 months up to 12 months, 50 breaths
+  or more per minute"), the quote you cite for it must include the words
+  that state the band as well as the number, copied exactly, even when the
+  quote gets longer. A quote with only the number ("50 breaths or more per
+  minute") leaves the band without a source.
 - Keep the order the document shows. Siblings keep their page order.
 - Keep condition, advice, drug and dose text exactly as written and set
   clinical to true for advice, drug and dose text.

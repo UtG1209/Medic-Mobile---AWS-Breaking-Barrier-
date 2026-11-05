@@ -77,9 +77,19 @@ function openQuestionOpAllowed(codes: readonly string[], o: GuardOp, model: { op
  * True when every op is allowed for at least one of the targeted finding codes. Pass the model the patch
  * applies to: ops under /open_questions are then judged by the target question's route_to.
  */
+// Codes whose allowed paths are the citation paths (SOURCES, which include /open_questions/*/source).
+const CITATION_CODES: ReadonlySet<string> = new Set(Object.keys(PATCH_PATHS).filter((c) => PATCH_PATHS[c] === SOURCES));
+// A citation (page, quote) of an open question: /open_questions/N/source and below.
+const OPEN_QUESTION_SOURCE = /^\/open_questions\/(0|[1-9]\d*|-)\/source(\/|$)/;
+
 export function opsAllowed(codes: readonly string[], ops: readonly GuardOp[], model?: { open_questions?: ReadonlyArray<{ route_to?: string }> }): boolean {
   return ops.every((o) => {
-    if (model !== undefined && o.path.startsWith("/open_questions")) return openQuestionOpAllowed(codes, o, model);
+    if (model !== undefined && o.path.startsWith("/open_questions")) {
+      // A citation under an open question is an ordinary citation: fixable for the citation codes, as SOURCES lists it.
+      // (Without this the special case below refused it, so a wrong quote in an open question could never be fixed.)
+      if (OPEN_QUESTION_SOURCE.test(o.path)) return codes.some((c) => CITATION_CODES.has(c) && isPathAllowed(c, o.path));
+      return openQuestionOpAllowed(codes, o, model);
+    }
     return codes.some((c) => isPathAllowed(c, o.path));
   });
 }

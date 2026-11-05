@@ -121,7 +121,7 @@ describe("FakeModelClient", () => {
 });
 
 describe("isTransientBedrockError", () => {
-  it.each(["ThrottlingException", "ServiceUnavailableException", "ModelTimeoutException", "InternalServerException", "TimeoutError", "ModelThrottledError"])(
+  it.each(["ThrottlingException", "ServiceUnavailableException", "ModelTimeoutException", "InternalServerException", "TimeoutError", "ModelThrottledError", "ModelStreamErrorException", "ModelNotReadyException", "ModelErrorException"])(
     "name %s",
     (name) => {
       const e = new Error("x");

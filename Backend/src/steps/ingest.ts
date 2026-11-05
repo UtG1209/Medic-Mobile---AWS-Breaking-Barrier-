@@ -14,10 +14,12 @@ export function createDefaultExec(opts: { timeoutMs?: number } = {}): Exec {
   const timeout = opts.timeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS;
   return (cmd, args) =>
     new Promise<void>((resolve, reject) => {
-      execFile(cmd, args, { timeout }, (err) => {
+      execFile(cmd, args, { timeout }, (err, _stdout, stderr) => {
         if (err) {
+          // The first line of the error is only "Command failed: ..."; the reason (encrypted or corrupt PDF, ...) is in stderr.
+          const tail = String(stderr ?? "").trim().split("\n").slice(-3).join(" | ").slice(0, 400);
           const why = err.killed ? `timed out after ${timeout} ms` : err.message.split("\n")[0];
-          reject(new Error(`Command failed: ${path.basename(cmd)} (${why})`));
+          reject(new Error(`Command failed: ${path.basename(cmd)} (${why}${tail ? `; ${tail}` : ""})`));
         } else resolve();
       });
     });

@@ -5,7 +5,7 @@ import { MemoryArtifactStore, artifactKey } from "../../src/artifacts/artifactSt
 import { runStep } from "../../src/engine/runner.js";
 import type { StepContext } from "../../src/engine/step.js";
 import { TransientError } from "../../src/engine/step.js";
-import { FakeModelClient, ModelOutputError } from "../../src/model/modelClient.js";
+import { FakeModelClient, ModelOutputError, RunawayOutputError } from "../../src/model/modelClient.js";
 import { checkQuotes, createExtractStep, findBadQuotes } from "../../src/steps/extract.js";
 import { ExtractionOutput } from "../../src/steps/extractionSchema.js";
 import { MemoryStore } from "../../src/store/memoryStore.js";
@@ -120,7 +120,7 @@ describe("extract step", () => {
 
     const req = model.calls[0]!;
     expect(req.modelId).toBe("m1");
-    expect(req.maxTokens).toBe(32000);
+    expect(req.maxTokens).toBe(64000);
     expect(req.system).toBe(readFileSync(promptPath, "utf8"));
     const c = req.content;
     expect(c).toHaveLength(1 + 3 * 2 + 1);
@@ -155,6 +155,17 @@ describe("extract step", () => {
     expect(err.message).toContain("x".repeat(80));
     expect(err.message).not.toContain("x".repeat(81));
     expect(await text(artifacts, artifactKey("r1", "extract", "raw_response.txt"))).toBe(raw);
+    expect(await artifacts.exists(artifactKey("r1", "extract", "extraction_output.json"))).toBe(false);
+  });
+
+  it("keeps what the model wrote before the token cap, and fails as a retryable error", async () => {
+    const usage2 = { inputTokens: 0, outputTokens: 32000, modelId: "m1" };
+    const model = new FakeModelClient([new RunawayOutputError("Model reached maximum token limit.", '{"nodes": [{"id": "n1", ', usage2)]);
+    const { ctx, artifacts } = await setup(model);
+    const err = await createExtractStep({ modelId: "m1", promptPath }).run(ctx).catch((e) => e);
+    expect(err).toBeInstanceOf(TransientError);
+    expect(err.usage).toEqual(usage2);
+    expect(await text(artifacts, artifactKey("r1", "extract", "raw_runaway.txt"))).toBe('{"nodes": [{"id": "n1", ');
     expect(await artifacts.exists(artifactKey("r1", "extract", "extraction_output.json"))).toBe(false);
   });
 
@@ -273,6 +284,24 @@ describe("checkQuotes repairs only unambiguous slips, and records them", () => {
     expect(checkQuotes(out("p1.b1", "Line three is here.\nLine one is here."), b).bad).toHaveLength(1);
     expect(checkQuotes(out("p1.b1", "Line one is here.\nLine nine is here."), b).bad).toHaveLength(1);
     expect(checkQuotes(out("p1.b2", "Start of the instruction\nEnd of the instruction"), b).bad).toHaveLength(1);
+  });
+
+  it("hyphen: a quote cut at a line-break hyphen is extended to the end of the word (real run 44b9b3bb, Q10)", () => {
+    const blk = " Not able to drink or feed any-\nthing";
+    const b = new Map([["p6.b12", blk]]);
+    const o = out("p6.b12", " Not able to drink or feed any-");
+    const r = checkQuotes(o, b, { apply: true });
+    expect(r.bad).toEqual([]);
+    expect(r.fixes.map((f) => f.kind)).toEqual(["hyphen"]);
+    expect((o as any).nodes[0].src[0].quote).toBe(" Not able to drink or feed any-\nthing");
+    expect(blk.includes((o as any).nodes[0].src[0].quote)).toBe(true);
+  });
+
+  it("hyphen: a hyphen that is not at a line break, or a quote that does not end in one, is left alone", () => {
+    const b = new Map([["p1.b1", "Give a 2-year-old child water\nand a spoon of sugar. Feed any-time snacks"]]);
+    expect(checkQuotes(out("p1.b1", "Give a 2-year-old child water"), b, { apply: true }).fixes).toEqual([]);
+    expect(checkQuotes(out("p1.b1", "Feed any-time snacks"), b, { apply: true }).fixes).toEqual([]);
+    expect(checkQuotes(out("p1.b1", "Give a 2-year-"), b, { apply: true }).fixes).toEqual([]);
   });
 
   it("without apply, nothing in the output changes", () => {

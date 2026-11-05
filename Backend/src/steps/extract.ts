@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { artifactKey, pageImageName } from "../artifacts/artifactStore.js";
 import { TransientUsageError, type Step } from "../engine/step.js";
-import { ModelOutputError, type ModelContent } from "../model/modelClient.js";
+import { ModelOutputError, RunawayOutputError, type ModelContent } from "../model/modelClient.js";
 import { ExtractionOutput } from "./extractionSchema.js";
 
 interface InputPage {
@@ -16,8 +16,14 @@ interface InputDoc {
 }
 
 /** A quote the model got almost right, and the deterministic repair applied to it (recorded, never silent). */
+// Output cap of the one extraction call. Haiku 5.5 thinks before it answers and bills the hidden thinking as
+// output: the 12-page cough booklet used 28k to 32k tokens for a 34 KB reply (Haiku 4.5: 10k for 27 KB), so 32k
+// sat at the edge. 64k is the most the AgentCore wire allows and about 3.5 minutes at the model's speed, inside
+// the 6 minute per-call timeout.
+export const EXTRACT_MAX_TOKENS = 64000;
+
 export interface QuoteFix {
-  kind: "typography" | "block" | "format" | "span";
+  kind: "typography" | "block" | "format" | "span" | "hyphen";
   from: { block_id: string; quote: string };
   to: { block_id: string; quote: string };
 }
@@ -83,6 +89,22 @@ function spanIn(text: string, quote: string): string | undefined {
   return out.length <= 2 * quote.length ? out : undefined;
 }
 
+/**
+ * A quote that stops at a line-break hyphen ("...feed any-" where the block has "any-\nthing") is cut in the middle of a
+ * word. The validator joins "any-\nthing" into "anything", so the cut quote can never match the page and nothing, not
+ * even the officer agent, can fix it: it would have to write "any- thing" (the findings show the line break as a
+ * space). The booklet's own text up to the end of that word is returned instead; undefined when the quote does not
+ * end that way.
+ */
+function extendHyphen(text: string, quote: string): string | undefined {
+  const q = quote.replace(/\s+$/, "");
+  if (!/\p{L}-$/u.test(q)) return undefined;
+  const i = text.indexOf(q);
+  if (i < 0) return undefined;
+  const m = /^[ \t]*\r?\n[ \t]*\p{L}+/u.exec(text.slice(i + q.length));
+  return m ? text.slice(i, i + q.length + m[0].length) : undefined;
+}
+
 /** The booklet's exact text for `quote` in `text`: as is, or after folding curly quotes only; else undefined. */
 function exactIn(text: string, quote: string): string | undefined {
   if (text.includes(quote)) return quote;
@@ -102,6 +124,8 @@ const pageOf = (blockId: string): string | undefined => /^(p\d+)\./.exec(blockId
  *   miscounted blocks); block_id moves to that block.
  * - format: the quote is in the cited block but for case, spacing or trailing punctuation; the quote becomes
  *   the booklet's exact text (at least a phrase long, and found once).
+ * - hyphen: the quote stops at a line-break hyphen ("any-" where the block has "any-\nthing"); it is extended to the
+ *   end of that word.
  * - span: every line of the quote is in the cited block, in order, but the model skipped a line in between;
  *   the quote becomes the booklet's contiguous text covering them (at most twice the quote's length).
  * Anything else is bad: an empty quote, a quote in no block of the page, or in several (ambiguous).
@@ -134,6 +158,7 @@ export function checkQuotes(
           const loose = here === undefined ? looseIn(blocks.get(id) ?? "", quote) : undefined;
           const span = here === undefined && loose === undefined ? spanIn(blocks.get(id) ?? "", quote) : undefined;
           let fix: QuoteFix | undefined;
+          let isBad = false;
           if (here === undefined && loose !== undefined) {
             fix = { kind: "format", from: { block_id: id, quote }, to: { block_id: id, quote: loose } };
           } else if (here === undefined && span !== undefined) {
@@ -147,9 +172,17 @@ export function checkQuotes(
                 return t === undefined ? [] : [{ b, t }];
               });
             if (hits.length === 1) fix = { kind: "block", from: { block_id: id, quote }, to: { block_id: hits[0]!.b, quote: hits[0]!.t } };
-            else bad.push({ block_id: id, quote });
+            else {
+              bad.push({ block_id: id, quote });
+              isBad = true;
+            }
           } else if (here !== quote) {
             fix = { kind: "typography", from: { block_id: id, quote }, to: { block_id: id, quote: here } };
+          }
+          if (!isBad) {
+            const cur = fix?.to ?? { block_id: id, quote };
+            const ext = extendHyphen(blocks.get(cur.block_id) ?? "", cur.quote);
+            if (ext !== undefined) fix = { kind: fix?.kind ?? "hyphen", from: fix?.from ?? { block_id: id, quote }, to: { block_id: cur.block_id, quote: ext } };
           }
           if (fix) {
             fixes.push(fix);
@@ -214,9 +247,14 @@ export function createExtractStep(opts: { modelId: string; promptPath: string; m
           system,
           content,
           schema: ExtractionOutput,
-          maxTokens: opts.maxTokens ?? 32000,
+          maxTokens: opts.maxTokens ?? EXTRACT_MAX_TOKENS,
         });
       } catch (e) {
+        if (e instanceof RunawayOutputError) {
+          // Keep what the model wrote before the cap, to see why it ran away; the retry follows as usual.
+          await ctx.artifacts.put(artifactKey(runId, "extract", "raw_runaway.txt"), e.raw, "text/plain");
+          throw e;
+        }
         if (e instanceof ModelOutputError) {
           await ctx.artifacts.put(rawKey, e.raw, "text/plain");
           // Invalid JSON or a missing field varies from call to call: retry it (the cost of this call is recorded).

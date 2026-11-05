@@ -3,7 +3,7 @@ import { NotFound, artifactKey } from "../artifacts/artifactStore.js";
 import { TransientUsageError, UsageError, type Step, type StepContext, type StepResult, type StepUsage } from "../engine/step.js";
 import { DraftSchema, type Draft } from "../logic/fill/draftSchema.js";
 import { resolveDraft, type ResolveOptions, type ResolvedModel } from "../logic/fill/resolve.js";
-import { ModelOutputError, type ModelContent } from "../model/modelClient.js";
+import { ModelOutputError, RunawayOutputError, type ModelContent } from "../model/modelClient.js";
 import { Conflict } from "../store/store.js";
 import { ExtractionOutput } from "./extractionSchema.js";
 import type { LogicModelValidator } from "./logicModelValidator.js";
@@ -14,12 +14,20 @@ export interface FillLogicOptions {
   /** System prompt file (extraction/fill_prompt.txt by default, see config FILL_PROMPT). */
   promptPath: string;
   maxTokens?: number;
+  /** The names the confirmed test cases use, as text for the prompt (see goldenNames.ts). A failure here never fails the step. */
+  namingHint?: (runId: string) => Promise<string | undefined>;
   /** Logic model meta.pathway_id; defaults to a slug of the guideline source id. */
   pathwayId?: string;
   guideline?: { title?: string; publisher?: string; edition?: string };
 }
 
 const MAX_PROBLEMS_LISTED = 30;
+
+// Output cap of a fill call. The hidden thinking of Haiku 5.5 counts too (11k used of the old 16k for a 6 KB draft).
+export const FILL_MAX_TOKENS = 32000;
+
+// Problems that come from the extraction itself: asking the model for the same draft again cannot fix them.
+const EXTRACTION_PROBLEM = /no child age variable|cannot be read as "X months up to/;
 
 function addUsage(a: StepUsage | undefined, b: StepUsage | undefined): StepUsage | undefined {
   if (a === undefined) return b;
@@ -34,12 +42,13 @@ function slug(s: string | undefined): string | undefined {
 }
 
 /** The extraction as the model sees it: thresholds carry their index, which is all the draft may write. */
-function extractionContent(runId: string, ex: ExtractionOutput): ModelContent[] {
+function extractionContent(runId: string, ex: ExtractionOutput, hint?: string): ModelContent[] {
   const thresholds = ex.thresholds.map((t, index) => ({ index, ...t }));
   return [
     { type: "text", text: `Run: ${runId}\nMode: new_guideline\nThe guideline extraction follows. Refer to its items by id, and to thresholds by index.` },
     { type: "text", text: "Thresholds (use {\"threshold\": index}):\n" + JSON.stringify(thresholds) },
     { type: "text", text: "Extraction:\n" + JSON.stringify({ ...ex, thresholds: undefined }) },
+    ...(hint !== undefined ? [{ type: "text" as const, text: hint }] : []),
     { type: "text", text: "Return one JSON object: the draft." },
   ];
 }
@@ -82,8 +91,9 @@ export function createFillLogicStep(opts: FillLogicOptions): Step {
 
       const resolveOpts = await resolveOptions(ctx, opts);
       const system = await readFile(opts.promptPath, "utf8");
-      const content = extractionContent(runId, ex);
-      const maxTokens = opts.maxTokens ?? 16000;
+      const hint = await opts.namingHint?.(runId).catch(() => undefined);
+      const content = extractionContent(runId, ex, hint);
+      const maxTokens = opts.maxTokens ?? FILL_MAX_TOKENS;
 
       const call = async (
         c: ModelContent[],
@@ -95,6 +105,10 @@ export function createFillLogicStep(opts: FillLogicOptions): Step {
           await ctx.artifacts.put(rawKey, r.raw, "text/plain");
           return { draft: r.value, raw: r.raw, usage: r.usage, problems: [] };
         } catch (e) {
+          if (e instanceof RunawayOutputError) {
+            await ctx.artifacts.put(artifactKey(runId, "fill_logic", "raw_runaway.txt"), e.raw, "text/plain");
+            throw e;
+          }
           if (!(e instanceof ModelOutputError)) throw e;
           await ctx.artifacts.put(rawKey, e.raw, "text/plain");
           return { raw: e.raw, ...(e.usage !== undefined ? { usage: e.usage } : {}), problems: e.issues ?? [e.message] };
@@ -137,10 +151,13 @@ export function createFillLogicStep(opts: FillLogicOptions): Step {
         attempt = tryResolve(second.draft, second.problems);
         draft = second.draft;
         if (attempt.model === undefined) {
-          // The draft is sampled, so a fresh call usually avoids the slip (an outcome used as an action, a number used
-          // as yes/no): retry it. The cost of this attempt's calls is still recorded.
+          const message = `fill_logic: the model draft still has ${attempt.problems.length} problem(s) after one repair: ${attempt.problems.slice(0, 10).join("; ")}`;
+          // A problem in the extraction itself (no age variable, an unreadable age range) comes back every time: do not retry.
+          if (attempt.problems.some((p) => EXTRACTION_PROBLEM.test(p))) throw new UsageError(message, usage);
+          // Otherwise the draft is sampled, so a fresh call usually avoids the slip (an outcome used as an action, a number
+          // used as yes/no): retry it. The cost of this attempt's calls is still recorded.
           throw new TransientUsageError(
-            `fill_logic: the model draft still has ${attempt.problems.length} problem(s) after one repair: ${attempt.problems.slice(0, 10).join("; ")}`,
+            message,
             usage,
           );
         }

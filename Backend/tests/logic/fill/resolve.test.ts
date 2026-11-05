@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { DraftSchema, type Draft } from "../../../src/logic/fill/draftSchema.js";
 import {
+  isAgeVariable,
   mapThresholdOp,
   normalizeUnit,
+  variableUnit,
   parseAgeBand,
   parseDoseText,
   parseFollowup,
@@ -371,6 +373,25 @@ describe("normalizeUnit", () => {
 describe("resolveDraft accepts an age variable whose unit is months/years", () => {
   it("does not report a missing child age variable", () => {
     const ex = extraction((e) => { e.variables[0]!.unit = "months/years"; });
+    const r = resolveDraft(draft(), ex, opts);
+    expect(r.ok ? [] : r.problems.filter((p) => /no child age variable/.test(p))).toEqual([]);
+  });
+});
+
+describe("the age variable", () => {
+  it("is found by unit, or by an age label with an age range when the unit is empty (real run 1a3c8cff)", () => {
+    expect(isAgeVariable({ id: "child_age", label: "Child age", unit: null, range_hint: "2 months up to 5 years" })).toBe(true);
+    expect(isAgeVariable({ id: "v3", label: "Child age", unit: "months/years", range_hint: null })).toBe(true);
+    expect(variableUnit({ id: "child_age", label: "Child age", unit: null, range_hint: "2 months up to 5 years" })).toBe("months");
+  });
+  it("is not confused with other variables", () => {
+    expect(isAgeVariable({ id: "cough_days", label: "Cough duration", unit: "days", range_hint: null })).toBe(false);
+    expect(isAgeVariable({ id: "message", label: "Message sent", unit: null, range_hint: "2 months up to 5 years" })).toBe(false);
+    expect(isAgeVariable({ id: "child_age", label: "Child age", unit: null, range_hint: null })).toBe(false);
+    expect(variableUnit({ id: "rate", label: "Breaths", unit: "breaths per minute", range_hint: null })).toBe("breaths_per_minute");
+  });
+  it("lets resolveDraft find an age variable with an empty unit", () => {
+    const ex = extraction((e) => { e.variables[0]!.unit = null; });
     const r = resolveDraft(draft(), ex, opts);
     expect(r.ok ? [] : r.problems.filter((p) => /no child age variable/.test(p))).toEqual([]);
   });

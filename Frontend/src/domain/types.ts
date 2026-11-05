@@ -22,6 +22,18 @@ export interface Evidence {
   /** Live mode: the backend's own cross-check of the loaded version (GET /runs/:id/versions/:n/flags).
       Used instead of draftB when present; null when the route could not be read. */
   cross?: CrossFlags | null;
+  /** Live mode: the backend's own golden-case result for the loaded version (from its findings). Used instead of the
+      small built-in table when present; null/undefined when the backend gave no golden-case findings. */
+  golden?: BackendGolden | null;
+}
+
+/** The backend's golden-case result (Backend/src/validation/checks/goldenCases.ts), as the golden card shows it. */
+export interface BackendGolden {
+  n: number;
+  /** How many cases were run and how many gave the expected result (from the backend's own count). Undefined when no count was reported. */
+  run?: number; passed?: number;
+  /** Every finding of the golden-case check except the plain count, de-duplicated. */
+  issues: { sev: "blocking" | "warning"; text: string }[];
 }
 
 /** One flag of the backend's flags document (Backend/src/validation/flags.ts), as the cross check shows it. */
