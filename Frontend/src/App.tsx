@@ -69,7 +69,7 @@ export default function App() {
     apply: (msgId, i) => { if (w) run(api.applyProposal(w.id, msgId, i)); },
     dismiss: msgId => { if (w) run(api.dismissProposal(w.id, msgId)); },
     answer: (flagId, choice) => { if (w) run(api.answer(w.id, flagId, choice)); },
-    approveAll: async () => { if (w) await run(api.approve(w.id), () => nav("/release")); },
+    approveAll: async () => { if (w) await run(api.approve(w.id), x => { if (x.state !== "clinician") nav("/release"); }); }, // stays on Review when the officer agent escalated
     runVerify: () => { if (w) run(api.runVerify(w.id)); },
     approveDeploy: () => { if (w) run(api.approveDeploy(w.id)); },
     setRole,
