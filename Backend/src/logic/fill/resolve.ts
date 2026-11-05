@@ -288,7 +288,13 @@ export function resolveDraft(draft: Draft, ex: Ex, opts: ResolveOptions): Resolv
     if (ageQuestion === undefined || !ageQuestion.integer) {
       problem(`Add an integer question with variable_id "${ageVariable.id}" (the child's age); the age range and age bands need it.`);
     }
+    // range_hint first; the extraction model sometimes leaves it null while the variable's own quote states
+    // the range ("Use this booklet for a child age 2 months up to 5 years."). Only guideline text is read.
     scope = parseAgeBand(ageVariable.range_hint);
+    for (const s of ageVariable.src) {
+      if (scope !== undefined) break;
+      scope = parseAgeBand(s.quote);
+    }
     if (scope === undefined) problem(`The age range of variable "${ageVariable.id}" ("${ageVariable.range_hint ?? ""}") cannot be read as "X months up to Y months/years".`);
   }
 
