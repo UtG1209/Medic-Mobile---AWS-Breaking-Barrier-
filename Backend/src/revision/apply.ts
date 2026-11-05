@@ -1,6 +1,6 @@
 import type { Condition, Model, Source } from "../logic/index.js";
 import { parseModel } from "../logic/schema.js";
-import { clipText, collapse, mapThresholdOp, normalizeUnit, parseAgeBand, parseDoseText, parseFollowup, sources } from "../logic/fill/resolve.js";
+import { clipText, collapse, mapThresholdOp, parseAgeBand, parseDoseText, parseFollowup, sources, variableUnit } from "../logic/fill/resolve.js";
 import type { ExtractionOutput } from "../steps/extractionSchema.js";
 import { looksLikeInstruction } from "../validation/text.js";
 import type { TargetSet } from "./targets.js";
@@ -118,7 +118,7 @@ function describeLeaf(c: Condition): string {
 /** Questions of the model that the extraction threshold's variable is asked by: same id, or same unit. */
 function questionsForVariable(model: Model, ex: Ex, variable: string): Set<string> {
   const v = ex.variables.find((x) => x.id === variable);
-  const unit = normalizeUnit(v?.unit);
+  const unit = v === undefined ? undefined : variableUnit(v);
   const out = new Set<string>();
   for (const q of model.questions) {
     if (q.answer_type !== "integer") continue;

@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { artifactKey, pageImageName } from "../artifacts/artifactStore.js";
 import { TransientUsageError, type Step } from "../engine/step.js";
-import { ModelOutputError, type ModelContent } from "../model/modelClient.js";
+import { ModelOutputError, RunawayOutputError, type ModelContent } from "../model/modelClient.js";
 import { ExtractionOutput } from "./extractionSchema.js";
 
 interface InputPage {
@@ -217,6 +217,11 @@ export function createExtractStep(opts: { modelId: string; promptPath: string; m
           maxTokens: opts.maxTokens ?? 32000,
         });
       } catch (e) {
+        if (e instanceof RunawayOutputError) {
+          // Keep what the model wrote before the cap, to see why it ran away; the retry follows as usual.
+          await ctx.artifacts.put(artifactKey(runId, "extract", "raw_runaway.txt"), e.raw, "text/plain");
+          throw e;
+        }
         if (e instanceof ModelOutputError) {
           await ctx.artifacts.put(rawKey, e.raw, "text/plain");
           // Invalid JSON or a missing field varies from call to call: retry it (the cost of this call is recorded).

@@ -1,6 +1,6 @@
 import { Agent, BedrockModel, ImageBlock, TextBlock } from "@strands-agents/sdk";
 import { TransientError } from "../engine/step.js";
-import { parseModelJson, type ModelClient, type ModelContent } from "./modelClient.js";
+import { RunawayOutputError, parseModelJson, type ModelClient, type ModelContent } from "./modelClient.js";
 
 // Per call. Keeps one attempt well inside a 15 minute Lambda invocation.
 export const DEFAULT_BEDROCK_TIMEOUT_MS = 6 * 60 * 1000;
@@ -15,6 +15,22 @@ const TRANSIENT_NAMES = new Set([
 ]);
 const TRANSIENT_CODES = new Set(["ECONNRESET", "ETIMEDOUT", "ECONNREFUSED", "EPIPE", ...TRANSIENT_NAMES]);
 const TRANSIENT_STATUS = new Set([429, 500, 502, 503, 504]);
+
+/**
+ * The model wrote until it hit maxTokens (the Strands SDK throws MaxTokensError). A normal answer is far shorter
+ * (a real extraction is 10k to 18k tokens, the cap is 32k), so this is a runaway generation that a fresh call
+ * does not repeat: retry it.
+ */
+export function isRunawayOutput(e: unknown): boolean {
+  return typeof e === "object" && e !== null && (e as { name?: unknown }).name === "MaxTokensError";
+}
+
+/** The text of the partial assistant message the SDK attaches to MaxTokensError ("" if there is none). */
+export function partialText(e: unknown): string {
+  const blocks = (e as { partialMessage?: { content?: unknown } }).partialMessage?.content;
+  if (!Array.isArray(blocks)) return "";
+  return blocks.map((b) => (typeof (b as { text?: unknown }).text === "string" ? (b as { text: string }).text : "")).join("");
+}
 
 export function isTransientBedrockError(e: unknown): boolean {
   let cur: unknown = e;
@@ -112,6 +128,9 @@ export function createStrandsModelClient(opts: { region: string; timeoutMs?: num
         // A parse failure carries usage so the paid call is still recorded.
         return { value: parseModelJson(extractJsonReply(raw), req.schema, usage), raw, usage };
       } catch (e) {
+        if (isRunawayOutput(e)) {
+          throw new RunawayOutputError(e instanceof Error ? e.message : String(e), partialText(e), { inputTokens: 0, outputTokens: req.maxTokens, modelId: req.modelId });
+        }
         if (isTransientBedrockError(e)) {
           throw new TransientError(e instanceof Error ? e.message : String(e));
         }

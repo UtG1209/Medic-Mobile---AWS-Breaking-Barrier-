@@ -5,7 +5,7 @@ import { MemoryArtifactStore, artifactKey } from "../../src/artifacts/artifactSt
 import { runStep } from "../../src/engine/runner.js";
 import type { StepContext } from "../../src/engine/step.js";
 import { TransientError } from "../../src/engine/step.js";
-import { FakeModelClient, ModelOutputError } from "../../src/model/modelClient.js";
+import { FakeModelClient, ModelOutputError, RunawayOutputError } from "../../src/model/modelClient.js";
 import { checkQuotes, createExtractStep, findBadQuotes } from "../../src/steps/extract.js";
 import { ExtractionOutput } from "../../src/steps/extractionSchema.js";
 import { MemoryStore } from "../../src/store/memoryStore.js";
@@ -155,6 +155,17 @@ describe("extract step", () => {
     expect(err.message).toContain("x".repeat(80));
     expect(err.message).not.toContain("x".repeat(81));
     expect(await text(artifacts, artifactKey("r1", "extract", "raw_response.txt"))).toBe(raw);
+    expect(await artifacts.exists(artifactKey("r1", "extract", "extraction_output.json"))).toBe(false);
+  });
+
+  it("keeps what the model wrote before the token cap, and fails as a retryable error", async () => {
+    const usage2 = { inputTokens: 0, outputTokens: 32000, modelId: "m1" };
+    const model = new FakeModelClient([new RunawayOutputError("Model reached maximum token limit.", '{"nodes": [{"id": "n1", ', usage2)]);
+    const { ctx, artifacts } = await setup(model);
+    const err = await createExtractStep({ modelId: "m1", promptPath }).run(ctx).catch((e) => e);
+    expect(err).toBeInstanceOf(TransientError);
+    expect(err.usage).toEqual(usage2);
+    expect(await text(artifacts, artifactKey("r1", "extract", "raw_runaway.txt"))).toBe('{"nodes": [{"id": "n1", ');
     expect(await artifacts.exists(artifactKey("r1", "extract", "extraction_output.json"))).toBe(false);
   });
 

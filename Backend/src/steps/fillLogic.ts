@@ -3,7 +3,7 @@ import { NotFound, artifactKey } from "../artifacts/artifactStore.js";
 import { TransientUsageError, UsageError, type Step, type StepContext, type StepResult, type StepUsage } from "../engine/step.js";
 import { DraftSchema, type Draft } from "../logic/fill/draftSchema.js";
 import { resolveDraft, type ResolveOptions, type ResolvedModel } from "../logic/fill/resolve.js";
-import { ModelOutputError, type ModelContent } from "../model/modelClient.js";
+import { ModelOutputError, RunawayOutputError, type ModelContent } from "../model/modelClient.js";
 import { Conflict } from "../store/store.js";
 import { ExtractionOutput } from "./extractionSchema.js";
 import type { LogicModelValidator } from "./logicModelValidator.js";
@@ -95,6 +95,10 @@ export function createFillLogicStep(opts: FillLogicOptions): Step {
           await ctx.artifacts.put(rawKey, r.raw, "text/plain");
           return { draft: r.value, raw: r.raw, usage: r.usage, problems: [] };
         } catch (e) {
+          if (e instanceof RunawayOutputError) {
+            await ctx.artifacts.put(artifactKey(runId, "fill_logic", "raw_runaway.txt"), e.raw, "text/plain");
+            throw e;
+          }
           if (!(e instanceof ModelOutputError)) throw e;
           await ctx.artifacts.put(rawKey, e.raw, "text/plain");
           return { raw: e.raw, ...(e.usage !== undefined ? { usage: e.usage } : {}), problems: e.issues ?? [e.message] };

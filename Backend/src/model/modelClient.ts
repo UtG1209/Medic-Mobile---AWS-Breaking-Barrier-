@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { UsageError, type StepUsage } from "../engine/step.js";
+import { TransientUsageError, UsageError, type StepUsage } from "../engine/step.js";
 
 export type ModelContent =
   | { type: "text"; text: string }
@@ -19,6 +19,19 @@ export interface ModelClient {
     usage: { inputTokens: number; outputTokens: number; modelId: string };
     raw: string;
   }>;
+}
+
+// The model wrote until maxTokens. Retryable (a fresh call does not repeat it); `raw` is whatever it had written,
+// kept by the step as an artifact so the cause of a runaway can be read afterwards.
+export class RunawayOutputError extends TransientUsageError {
+  constructor(
+    message: string,
+    public readonly raw: string,
+    usage?: StepUsage,
+  ) {
+    super(message, usage);
+    this.name = "RunawayOutputError";
+  }
 }
 
 // usage: tokens of the call that produced the bad output, so the cost is recorded.

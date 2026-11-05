@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { TransientError } from "../../src/engine/step.js";
+import { RunawayOutputError } from "../../src/model/modelClient.js";
 
 type Invoke = (content: unknown, options?: { cancelSignal?: AbortSignal }) => Promise<unknown>;
 const state: { invoke: Invoke; seenOptions: unknown[] } = { invoke: async () => ({}), seenOptions: [] };
@@ -52,6 +53,21 @@ describe("createStrandsModelClient timeout", () => {
     const p = createStrandsModelClient({ region: "us-west-2", timeoutMs: 20 }).generateJson(req);
     await expect(p).rejects.toBeInstanceOf(TransientError);
     await expect(p).rejects.toThrow(/timed out/);
+  });
+  it("retries a runaway generation: MaxTokensError becomes a TransientError", async () => {
+    state.invoke = async () => {
+      throw Object.assign(new Error("Model reached maximum token limit."), {
+        name: "MaxTokensError",
+        partialMessage: { role: "assistant", content: [{ text: '{"a": [1, 1, ' }, { text: "1, 1" }] },
+      });
+    };
+    const p = createStrandsModelClient({ region: "us-west-2" }).generateJson(req);
+    await expect(p).rejects.toBeInstanceOf(TransientError);
+    await expect(p).rejects.toThrow(/maximum token limit/);
+    const err = (await p.catch((e: unknown) => e)) as RunawayOutputError;
+    expect(err).toBeInstanceOf(RunawayOutputError);
+    expect(err.raw).toBe('{"a": [1, 1, 1, 1');
+    expect(err.usage).toEqual({ inputTokens: 0, outputTokens: 10, modelId: "m" });
   });
   it("still times out when the SDK ignores the signal (non-cancelling race)", async () => {
     state.invoke = () => new Promise(() => {});
