@@ -39,6 +39,7 @@ describe("describeAudit", () => {
     expect(f.items[0]!.kind).toBe("agent_note");
     expect(f.items[0]!.text).toBe("The review agent's proposed fix to version 1 was not applied: patch touches paths the agent may not change.");
     expect(f.items[1]!.kind).toBe("agent_fix");
+    expect(f.items[1]!.text).toBe("The review agent fixed an issue and saved version 2.");
   });
   it("cursor and after", () => {
     const first = describeAudit(ev.slice(0, 3), "ingesting");

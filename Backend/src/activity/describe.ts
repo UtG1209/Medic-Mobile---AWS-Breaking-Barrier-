@@ -72,7 +72,7 @@ function describeOne(e: AuditEvent): { actor: Actor; kind: string; text: string 
     case "officer_agent_fix":
       // The agent also records refused attempts under this type (with `refused`); never call those a fix.
       if (typeof d.refused === "string") return { actor: "officer_agent", kind: "agent_note", text: `The review agent's proposed fix${v ? ` to${v}` : ""} was not applied: ${d.refused}.` };
-      return { actor: "officer_agent", kind: "agent_fix", text: typeof d.summary === "string" ? `The review agent fixed: ${d.summary}` : `The review agent fixed an issue${v ? ` and saved${v}` : ""}.` };
+      return { actor: "officer_agent", kind: "agent_fix", text: typeof d.summary === "string" ? `The review agent fixed: ${d.summary}` : `The review agent fixed an issue${typeof d.newVersion === "number" ? ` and saved version ${String(d.newVersion)}` : ""}.` };
     case "officer_agent_signed":
       return { actor: "officer_agent", kind: "agent_signed", text: `The review agent signed off${v}.` };
     case "officer_agent_escalated":
