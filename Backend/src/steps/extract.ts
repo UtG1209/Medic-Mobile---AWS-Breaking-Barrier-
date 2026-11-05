@@ -23,7 +23,7 @@ interface InputDoc {
 export const EXTRACT_MAX_TOKENS = 64000;
 
 export interface QuoteFix {
-  kind: "typography" | "block" | "format" | "span";
+  kind: "typography" | "block" | "format" | "span" | "hyphen";
   from: { block_id: string; quote: string };
   to: { block_id: string; quote: string };
 }
@@ -89,6 +89,22 @@ function spanIn(text: string, quote: string): string | undefined {
   return out.length <= 2 * quote.length ? out : undefined;
 }
 
+/**
+ * A quote that stops at a line-break hyphen ("...feed any-" where the block has "any-\nthing") is cut in the middle of a
+ * word. The validator joins "any-\nthing" into "anything", so the cut quote can never match the page and nothing, not
+ * even the officer agent, can fix it: it would have to write "any- thing" (the findings show the line break as a
+ * space). The booklet's own text up to the end of that word is returned instead; undefined when the quote does not
+ * end that way.
+ */
+function extendHyphen(text: string, quote: string): string | undefined {
+  const q = quote.replace(/\s+$/, "");
+  if (!/\p{L}-$/u.test(q)) return undefined;
+  const i = text.indexOf(q);
+  if (i < 0) return undefined;
+  const m = /^[ \t]*\r?\n[ \t]*\p{L}+/u.exec(text.slice(i + q.length));
+  return m ? text.slice(i, i + q.length + m[0].length) : undefined;
+}
+
 /** The booklet's exact text for `quote` in `text`: as is, or after folding curly quotes only; else undefined. */
 function exactIn(text: string, quote: string): string | undefined {
   if (text.includes(quote)) return quote;
@@ -108,6 +124,8 @@ const pageOf = (blockId: string): string | undefined => /^(p\d+)\./.exec(blockId
  *   miscounted blocks); block_id moves to that block.
  * - format: the quote is in the cited block but for case, spacing or trailing punctuation; the quote becomes
  *   the booklet's exact text (at least a phrase long, and found once).
+ * - hyphen: the quote stops at a line-break hyphen ("any-" where the block has "any-\nthing"); it is extended to the
+ *   end of that word.
  * - span: every line of the quote is in the cited block, in order, but the model skipped a line in between;
  *   the quote becomes the booklet's contiguous text covering them (at most twice the quote's length).
  * Anything else is bad: an empty quote, a quote in no block of the page, or in several (ambiguous).
@@ -140,6 +158,7 @@ export function checkQuotes(
           const loose = here === undefined ? looseIn(blocks.get(id) ?? "", quote) : undefined;
           const span = here === undefined && loose === undefined ? spanIn(blocks.get(id) ?? "", quote) : undefined;
           let fix: QuoteFix | undefined;
+          let isBad = false;
           if (here === undefined && loose !== undefined) {
             fix = { kind: "format", from: { block_id: id, quote }, to: { block_id: id, quote: loose } };
           } else if (here === undefined && span !== undefined) {
@@ -153,9 +172,17 @@ export function checkQuotes(
                 return t === undefined ? [] : [{ b, t }];
               });
             if (hits.length === 1) fix = { kind: "block", from: { block_id: id, quote }, to: { block_id: hits[0]!.b, quote: hits[0]!.t } };
-            else bad.push({ block_id: id, quote });
+            else {
+              bad.push({ block_id: id, quote });
+              isBad = true;
+            }
           } else if (here !== quote) {
             fix = { kind: "typography", from: { block_id: id, quote }, to: { block_id: id, quote: here } };
+          }
+          if (!isBad) {
+            const cur = fix?.to ?? { block_id: id, quote };
+            const ext = extendHyphen(blocks.get(cur.block_id) ?? "", cur.quote);
+            if (ext !== undefined) fix = { kind: fix?.kind ?? "hyphen", from: fix?.from ?? { block_id: id, quote }, to: { block_id: cur.block_id, quote: ext } };
           }
           if (fix) {
             fixes.push(fix);

@@ -286,6 +286,24 @@ describe("checkQuotes repairs only unambiguous slips, and records them", () => {
     expect(checkQuotes(out("p1.b2", "Start of the instruction\nEnd of the instruction"), b).bad).toHaveLength(1);
   });
 
+  it("hyphen: a quote cut at a line-break hyphen is extended to the end of the word (real run 44b9b3bb, Q10)", () => {
+    const blk = " Not able to drink or feed any-\nthing";
+    const b = new Map([["p6.b12", blk]]);
+    const o = out("p6.b12", " Not able to drink or feed any-");
+    const r = checkQuotes(o, b, { apply: true });
+    expect(r.bad).toEqual([]);
+    expect(r.fixes.map((f) => f.kind)).toEqual(["hyphen"]);
+    expect((o as any).nodes[0].src[0].quote).toBe(" Not able to drink or feed any-\nthing");
+    expect(blk.includes((o as any).nodes[0].src[0].quote)).toBe(true);
+  });
+
+  it("hyphen: a hyphen that is not at a line break, or a quote that does not end in one, is left alone", () => {
+    const b = new Map([["p1.b1", "Give a 2-year-old child water\nand a spoon of sugar. Feed any-time snacks"]]);
+    expect(checkQuotes(out("p1.b1", "Give a 2-year-old child water"), b, { apply: true }).fixes).toEqual([]);
+    expect(checkQuotes(out("p1.b1", "Feed any-time snacks"), b, { apply: true }).fixes).toEqual([]);
+    expect(checkQuotes(out("p1.b1", "Give a 2-year-"), b, { apply: true }).fixes).toEqual([]);
+  });
+
   it("without apply, nothing in the output changes", () => {
     const o = out("p5.b7", " Chest indrawing?");
     expect(checkQuotes(o, blocks).fixes).toHaveLength(1);
