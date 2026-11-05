@@ -50,6 +50,11 @@ export const FlagsDocumentSchema = z
     comparison: z.enum(["ran", "not_run", "second_draft_invalid"]),
     /** modelSha of the second draft, when it could be read. */
     secondDraftSha: Sha.nullable(),
+    /**
+     * How many of the confirmed test cases each draft gets right (the same check on both). The cross-check cannot say which draft is
+     * right; the cases, written by people, can. Absent when there is no second draft or no cases.
+     */
+    golden: z.object({ cases: z.number().int().min(0), first: z.number().int().min(0), second: z.number().int().min(0) }).nullable().optional(),
     checkedAt: z.number(),
     summary: FlagsSummarySchema,
     notice: z.string().min(1),

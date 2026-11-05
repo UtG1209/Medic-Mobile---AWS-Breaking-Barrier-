@@ -138,10 +138,17 @@ function backendCross(c: CrossFlags): Omit<Stage, "key" | "n" | "name" | "desc" 
     ? "In " + same.toLocaleString("en-US") + " of " + s.compared.toLocaleString("en-US") + " sample patients both drafts give the same result"
       + (s.differing ? "; " + s.differing.toLocaleString("en-US") + " differ" + (s.groups ? ", in " + plural(s.groups, "way") : "") : "")
     : (flags.length ? plural(flags.length, "difference") + " between the drafts" : "The drafts agree");
+  // The cross check cannot say which draft is right; the confirmed test cases, written by people, can say how each one does.
+  const g = c.golden;
+  const cases = g ? g.cases : 0;
+  const goldenLine = !g || cases === 0 ? ""
+    : g.first === g.second
+      ? ". " + (g.first === cases ? "Both drafts get all " + cases : "Both drafts get " + g.first + " of " + cases) + " confirmed test cases right"
+      : ". On the " + cases + " confirmed test cases this draft gets " + g.first + " right and the second draft gets " + g.second;
   const tail = rest > 0
     ? ". The " + shown.length + " clearest differences are listed; " + rest + " smaller one" + (rest === 1 ? " is" : "s are") + " not" + (quiet > 0 ? " (" + quiet + " of them open questions that only one draft raised)" : "")
     : "";
-  return { status: statusOf(issues), issues, uses, summary: head + tail, ...(headline !== undefined ? { headline } : {}) };
+  return { status: statusOf(issues), issues, uses, summary: head + goldenLine + tail, ...(headline !== undefined ? { headline } : {}) };
 }
 
 const cache = new WeakMap<Spec, { ev: Evidence; stages: Stage[] }>();

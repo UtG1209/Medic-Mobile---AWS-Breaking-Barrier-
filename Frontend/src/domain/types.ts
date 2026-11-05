@@ -43,6 +43,8 @@ export interface CrossFlags {
   n: number; comparison: "ran" | "not_run" | "second_draft_invalid"; notice: string;
   summary: { flagCount: number; compared?: number; differing?: number; skipped?: number; groups?: number };
   flags: CrossFlag[];
+  /** How many of the confirmed test cases each draft gets right. Absent without a second draft or without cases. */
+  golden?: { cases: number; first: number; second: number } | null;
 }
 
 /** An open question from the logic model, put to the clinician by the AI agent. */

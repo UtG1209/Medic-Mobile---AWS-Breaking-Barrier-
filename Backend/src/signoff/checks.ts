@@ -13,6 +13,7 @@ import { FindingSchema, loadSourceDocument, type Finding, type SourceDocument } 
 import { findingsFor, gates as computeGates, type FindingGroup } from "../validation/gates.js";
 import { FLAGS_NOTICE, FlagsDocumentSchema, buildFlags, type FlagsDocument } from "../validation/flags.js";
 import { runChecks } from "../validation/runChecks.js";
+import { goldenCasesCheck } from "../validation/checks/goldenCases.js";
 import { defaultCheckInputs, type CheckInputs, type CheckInputsProvider } from "./checkInputs.js";
 
 export type { CheckInputs, CheckInputsProvider } from "./checkInputs.js";
@@ -350,10 +351,30 @@ async function analyse(io: StoreIo, runId: string, n: number, loaded: LoadedVers
   );
 }
 
+/** How many confirmed cases the checked draft and the second draft each get right (the golden check run on both); null without both. */
+function goldenOfBoth(record: FindingsRecord, inputs: CheckInputs): { cases: number; first: number; second: number } | null {
+  const cc = inputs.crossCheck;
+  const cases = inputs.goldenCases;
+  if (cc === undefined || !("model" in cc) || cases === undefined || cases.length === 0) return null;
+  const agreeOf = (fs: readonly { code: string; params: Record<string, unknown> }[]): number | undefined => {
+    const n = fs.find((f) => f.code === "GOLDEN_COUNT")?.params["agree"];
+    return typeof n === "number" ? n : undefined;
+  };
+  const first = agreeOf(record.findings.filter((f) => f.check === "goldenCases"));
+  const second = agreeOf(goldenCasesCheck({ model: cc.model, goldenCases: cases } as unknown as Parameters<typeof goldenCasesCheck>[0]));
+  return first !== undefined && second !== undefined ? { cases: cases.length, first, second } : null;
+}
+
 /** The flags document for a findings record: only the cross-check's findings, and whether the comparison ran. */
 export function flagsDocumentOf(record: FindingsRecord, inputs: CheckInputs): FlagsDocument {
   const cc = inputs.crossCheck;
   const { flags, summary } = buildFlags(record.findings.filter((f) => f.check === "crossCheck"));
+  let golden: ReturnType<typeof goldenOfBoth> = null;
+  try {
+    golden = goldenOfBoth(record, inputs);
+  } catch {
+    // Advisory: a draft the golden check cannot work through leaves the comparison out, never the flags.
+  }
   return {
     mode: "logic_models",
     runId: record.runId,
@@ -363,6 +384,7 @@ export function flagsDocumentOf(record: FindingsRecord, inputs: CheckInputs): Fl
     inputsSha: record.inputsSha,
     comparison: cc === undefined ? "not_run" : "model" in cc ? "ran" : "second_draft_invalid",
     secondDraftSha: cc !== undefined && "model" in cc ? modelSha(cc.model) : null,
+    ...(golden !== null ? { golden } : {}),
     checkedAt: record.checkedAt,
     summary,
     notice: FLAGS_NOTICE,
