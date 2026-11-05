@@ -323,17 +323,25 @@ async function signOnBackend(w: Workflow): Promise<{ n: number; modelSha: string
   const edits = w.versions.filter(v => v.event.startsWith("Edited")).length;
   const note = "Clinician review in the app: " + edits + " edit" + (edits === 1 ? "" : "s") + " to the rules, open questions answered, checks reviewed.";
   const body: Spec = { ...w.model, meta: { ...w.model.meta, version: parent + 1, parent_version: parent, created_at: new Date().toISOString(), created_by: CLINICIAN_ID, change_note: note } };
-  const { n } = await call<{ n: number }>(base + "/versions", { method: "POST", body: JSON.stringify({ parentVersion: parent, body, author: CLINICIAN_ID, authorRole: "clinician" }) });
-  let st = await call<StatusView>(base + "/versions/" + n + "/status");
+  const saved = (await call<{ n: number }>(base + "/versions", { method: "POST", body: JSON.stringify({ parentVersion: parent, body, author: CLINICIAN_ID, authorRole: "clinician" }) })).n;
+  // The officer agent runs asynchronously. When it answers a program-officer question it saves its own
+  // version on top of ours (metadata only; the backend refuses any change to clinical behaviour) and signs
+  // that one, so follow the latest version rather than only the one saved here.
+  const latestStatus = async (): Promise<StatusView> => {
+    const all = await call<VersionRec[]>(base + "/versions");
+    const top = all.reduce((m, v) => Math.max(m, v.n), saved);
+    return call<StatusView>(base + "/versions/" + top + "/status");
+  };
+  let st = await latestStatus();
   for (let i = 0; i < 60 && st.status === "awaiting_officer"; i++) {
-    await wait(1000);
-    st = await call<StatusView>(base + "/versions/" + n + "/status");
+    await wait(2000);
+    st = await latestStatus();
   }
   if (st.status !== "awaiting_clinician") {
-    throw new Error("Version " + n + " was saved, but the officer agent has not signed it (status: " + st.status.replace(/_/g, " ") + "). It may have left a comment on the version; check its findings.");
+    throw new Error("Version " + st.n + " was saved, but the officer agent has not signed it (status: " + st.status.replace(/_/g, " ") + "). It may have left a comment on the version; check its findings.");
   }
-  await call(base + "/versions/" + n + "/signatures/clinician", { method: "POST", body: JSON.stringify({ role: "clinician", userId: CLINICIAN_ID, modelSha: st.modelSha }) });
-  return { n, modelSha: st.modelSha };
+  await call(base + "/versions/" + st.n + "/signatures/clinician", { method: "POST", body: JSON.stringify({ role: "clinician", userId: CLINICIAN_ID, modelSha: st.modelSha }) });
+  return { n: st.n, modelSha: st.modelSha };
 }
 export const runVerify = (id: string) => mutate(id, wf.runVerify);
 export const approveDeploy = (id: string) => mutate(id, wf.approveDeploy);
