@@ -185,13 +185,21 @@ describe("fill_logic step", () => {
   });
 
   describe("the confirmed test cases' questions", () => {
-    const required = [{ id: "cough_days", answer_type: "integer" as const }, { id: "age_months", answer_type: "integer" as const }];
+    // The cases answer exactly the questions of the fixture draft.
+    const required = (JSON.parse(draftText).questions as { id: string; answer_type: "yes_no" | "integer" }[]).map((q) => ({ id: q.id, answer_type: q.answer_type }));
     const renamed = draftText.replaceAll('"cough_days"', '"cough_duration"'); // the same draft, one question under another id
+    // The same draft with one question added that no case answers (a danger sign of the booklet that the cases leave out).
+    const withExtra = (() => {
+      const d = JSON.parse(draftText);
+      d.questions.push({ id: "fever_7_days", label: "Fever for 7 days or more?", answer_type: "yes_no", danger_sign_id: "ds_fever_7d" });
+      return JSON.stringify(d);
+    })();
     const stepWith = (req: (runId: string) => Promise<typeof required | undefined>) =>
       createFillLogicStep({ validator: parseModelValidator, modelId: "us.test.model-v1:0", promptPath, pathwayId: "cough_fast_breathing", requiredQuestions: req });
     const qIds = async (a: MemoryArtifactStore) => (JSON.parse(await text(a, v1Key)).questions as { id: string }[]).map((q) => q.id);
+    const asked = (m: { calls: { content: unknown }[] }, i: number) => (m.calls[i]!.content as { text?: string }[]).map((c) => c.text ?? "").join("\n");
 
-    it("makes no extra call when the draft has every question", async () => {
+    it("makes no extra call when the draft asks exactly the questions of the cases", async () => {
       const { ctx, model } = await setup([good]);
       await stepWith(async () => required).run(ctx);
       expect(model.calls).toHaveLength(1);
@@ -201,12 +209,22 @@ describe("fill_logic step", () => {
       const { ctx, artifacts, model } = await setup([{ raw: renamed, usage: usage(1000, 400) }, { raw: draftText, usage: usage(1500, 420) }]);
       const res = await stepWith(async () => required).run(ctx);
       expect(model.calls).toHaveLength(2);
-      const asked = (model.calls[1]!.content as { text?: string }[]).map((c) => c.text ?? "").join("\n");
-      expect(asked).toContain("- cough_days (integer)");
-      expect(asked).not.toContain("- age_months");
+      expect(asked(model, 1)).toContain("- cough_days (integer)");
+      expect(asked(model, 1)).toContain("- cough_duration"); // the one it asked that the cases do not answer
+      expect(asked(model, 1)).not.toContain("- age_months");
       expect(await qIds(artifacts)).toContain("cough_days");
       expect(await text(artifacts, artifactKey("r1", "fill_logic", "raw_naming.txt"))).toBe(draftText);
       expect(res.usage).toEqual(usage(2500, 820)); // both calls are paid for
+    });
+
+    it("asks for a question the cases do not answer to be taken out, and keeps the draft without it", async () => {
+      const { ctx, artifacts, model } = await setup([{ raw: withExtra, usage: usage(1000, 400) }, { raw: draftText, usage: usage(1200, 380) }]);
+      await stepWith(async () => required).run(ctx);
+      expect(model.calls).toHaveLength(2);
+      expect(asked(model, 1)).toContain("- fever_7_days");
+      expect(asked(model, 1)).toContain("Remove each of these questions");
+      expect(asked(model, 1)).not.toContain("confirmed test cases answer these questions by id"); // nothing is missing
+      expect(await qIds(artifacts)).not.toContain("fever_7_days");
     });
 
     it("keeps the first draft when the correction is no better, or does not resolve", async () => {
@@ -226,7 +244,7 @@ describe("fill_logic step", () => {
       expect(await qIds(artifacts)).toContain("cough_duration");
     });
 
-    it("never fails because the list of questions cannot be read, and does not ask when a type differs only by name", async () => {
+    it("never fails because the list of questions cannot be read, and does nothing for an empty list", async () => {
       const a = await setup([{ raw: renamed, usage: usage(1000, 400) }]);
       await expect(stepWith(async () => { throw new Error("no golden file"); }).run(a.ctx)).resolves.toBeDefined();
       expect(a.model.calls).toHaveLength(1);

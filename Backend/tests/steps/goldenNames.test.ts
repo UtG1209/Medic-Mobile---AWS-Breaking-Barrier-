@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { goldenNamingHint, goldenQuestions, missingQuestions, namingRepairText } from "../../src/steps/goldenNames.js";
+import { extraQuestions, goldenNamingHint, goldenQuestions, missingQuestions, namingRepairText } from "../../src/steps/goldenNames.js";
 import { loadGoldenCases } from "../../src/validation/context.js";
 
 const real = loadGoldenCases(JSON.parse(readFileSync(new URL("../../golden/golden-confirmed.json", import.meta.url), "utf8")));
@@ -46,5 +46,29 @@ describe("goldenQuestions and missingQuestions", () => {
     const t = namingRepairText([{ id: "cough_days", answer_type: "integer" }]);
     expect(t).toContain("- cough_days (integer)");
     expect(t).toContain("threshold on the number question");
+  });
+});
+
+describe("extraQuestions and the correction text", () => {
+  it("finds the questions of a draft that the cases do not answer", () => {
+    const req = goldenQuestions(real);
+    const draft = [...req.map((r) => ({ id: r.id })), { id: "fever_days" }];
+    expect(extraQuestions(draft, req)).toEqual(["fever_days"]);
+    expect(extraQuestions(req.map((r) => ({ id: r.id })), req)).toEqual([]);
+  });
+  it("asks for extras to be removed, and for both missing and extra when both apply", () => {
+    const t = namingRepairText([], ["fever_days"]);
+    expect(t).toContain("- fever_days");
+    expect(t).toContain("Remove each of these questions");
+    expect(t).not.toContain("by id and answer type");
+    const both = namingRepairText([{ id: "cough_days", answer_type: "integer" }], ["cough_14_days"]);
+    expect(both).toContain("- cough_days (integer)");
+    expect(both).toContain("- cough_14_days");
+  });
+  it("tells the draft the form asks exactly the listed questions, and leaves a result's meaning but not who gets it", () => {
+    const h = goldenNamingHint(real)!;
+    expect(h).toContain("exactly the questions listed below");
+    expect(h).toContain("no other question");
+    expect(h).not.toMatch(/GF\d\d/);
   });
 });

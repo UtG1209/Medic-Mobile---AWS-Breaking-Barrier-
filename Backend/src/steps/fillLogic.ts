@@ -6,7 +6,7 @@ import { resolveDraft, type ResolveOptions, type ResolvedModel } from "../logic/
 import { ModelOutputError, RunawayOutputError, type ModelContent } from "../model/modelClient.js";
 import { Conflict } from "../store/store.js";
 import { ExtractionOutput } from "./extractionSchema.js";
-import { missingQuestions, namingRepairText, type RequiredQuestion } from "./goldenNames.js";
+import { extraQuestions, missingQuestions, namingRepairText, type RequiredQuestion } from "./goldenNames.js";
 import type { LogicModelValidator } from "./logicModelValidator.js";
 
 export interface FillLogicOptions {
@@ -169,22 +169,26 @@ export function createFillLogicStep(opts: FillLogicOptions): Step {
           );
         }
       }
-      // The confirmed test cases answer questions by id and type, and a draft without one cannot be tested against them. The
-      // model's names vary from run to run, so one correction call asks for what is missing. It is kept only when it resolves
-      // and has fewer of them missing; otherwise the draft stays as it was (the golden-case check then says what is missing).
-      // Never fails the step, and is skipped when the draft already needed a repair.
+      // The confirmed test cases answer exactly these questions, by id and type. A draft that lacks one, or asks another, cannot be
+      // tested against them. The model's choices vary from run to run, so one correction call asks for what is missing and for
+      // the extra questions to be taken out. It is kept only when it resolves and leaves fewer problems; otherwise the draft stays as
+      // it was (the golden-case check then says what is wrong). Never fails the step, and is skipped when the draft already needed a repair.
       const required = await opts.requiredQuestions?.(runId).catch(() => undefined);
       if (required !== undefined && required.length > 0 && !repaired && attempt.model !== undefined) {
-        const missing = missingQuestions(attempt.model.questions, required);
-        if (missing.length > 0) {
-          const fixContent: ModelContent[] = [...content, { type: "text", text: "Your previous answer was:\n" + raw }, { type: "text", text: namingRepairText(missing) }];
+        const count = (m: ResolvedModel): { missing: RequiredQuestion[]; extra: string[] } => ({ missing: missingQuestions(m.questions, required), extra: extraQuestions(m.questions, required) });
+        const before = count(attempt.model);
+        if (before.missing.length + before.extra.length > 0) {
+          const fixContent: ModelContent[] = [...content, { type: "text", text: "Your previous answer was:\n" + raw }, { type: "text", text: namingRepairText(before.missing, before.extra) }];
           try {
             const third = await call(fixContent, "raw_naming.txt");
             usage = addUsage(usage, third.usage);
             const t = tryResolve(third.draft, third.problems);
-            if (t.model !== undefined && missingQuestions(t.model.questions, required).length < missing.length) {
-              attempt = t;
-              draft = third.draft;
+            if (t.model !== undefined) {
+              const after = count(t.model);
+              if (after.missing.length + after.extra.length < before.missing.length + before.extra.length) {
+                attempt = t;
+                draft = third.draft;
+              }
             }
           } catch {
             // A failed correction keeps the draft as it was.
