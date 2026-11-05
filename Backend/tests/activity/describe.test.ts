@@ -31,6 +31,15 @@ describe("describeAudit", () => {
     expect(f.items[1]!.kind).toBe("agent_note");
     expect(f.items[1]!.text).not.toContain("/rules/0/when");
   });
+  it("a refused agent attempt is a note, never 'fixed ... and saved' (seen on a real AWS run)", () => {
+    const f = describeAudit([
+      { at: 1, type: "officer_agent_fix", detail: { n: 1, attempt: 1, refused: "patch touches paths the agent may not change" } },
+      { at: 2, type: "officer_agent_fix", detail: { n: 1, attempt: 2, newVersion: 2 } },
+    ], "awaiting_officer");
+    expect(f.items[0]!.kind).toBe("agent_note");
+    expect(f.items[0]!.text).toBe("The review agent's proposed fix to version 1 was not applied: patch touches paths the agent may not change.");
+    expect(f.items[1]!.kind).toBe("agent_fix");
+  });
   it("cursor and after", () => {
     const first = describeAudit(ev.slice(0, 3), "ingesting");
     expect(first.cursor).toBe(3);

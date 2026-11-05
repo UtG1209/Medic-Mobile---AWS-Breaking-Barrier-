@@ -249,6 +249,12 @@ describe("follow-ups and age bands", () => {
     });
     expect(ok(draft(), e).scope).toMatchObject({ age_months_min: 1, age_months_below: 36 });
   });
+  it("asks for a shorter id when a question or derived id is over 32 characters (seen from the real fill model)", () => {
+    const long = "fast_breathing_or_chest_indrawing"; // 33 characters
+    const ps = problems(draft((d) => (d.derived[0].id = long)));
+    expect(ps.some((p) => p.includes(`"${long}" is 33 characters long`))).toBe(true);
+    expect(ps.filter((p) => /characters long/.test(p))).toHaveLength(1);
+  });
   it("still reports an unreadable age range when neither range_hint nor any quote states one", () => {
     const e = extraction((x) => {
       const age = x.variables.find((v) => v.id === "age_m")!;

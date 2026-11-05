@@ -43,6 +43,8 @@ type Band = { min: number; below: number };
 type Dose = { age_months_min: number; age_months_below: number; dose: string; total?: string };
 
 const MAX_SOURCES = 20;
+// Same limit as validation/checks/fieldNames.ts.
+const MAX_FIELD_ID = 32;
 const TEXT_MAX = 2000;
 const MISSING_SHA = "0".repeat(64);
 
@@ -211,6 +213,11 @@ export function resolveDraft(draft: Draft, ex: Ex, opts: ResolveOptions): Resolv
   draft.questions.forEach((q) => claim(q.id, "question"));
   draft.derived.forEach((d) => claim(d.id, "derived item"));
   draft.outcomes.forEach((o) => claim(o.id, "outcome"));
+  // Question and derived ids become form field names, which the form-name check caps at 32 characters. Caught
+  // here so the repair round can shorten them (the officer agent may not rename ids later).
+  for (const [id, what] of [...draft.questions.map((q) => [q.id, "question"] as const), ...draft.derived.map((d) => [d.id, "derived item"] as const)]) {
+    if (id.length > MAX_FIELD_ID) problem(`The ${what} id "${id}" is ${id.length} characters long; form field names allow at most ${MAX_FIELD_ID}. Use a shorter id.`);
+  }
   const AGE_OUTCOME = "refer_outside_age_range";
   const AGE_URGENT_OUTCOME = "refer_urgent_outside_age_range";
   const AGE_DERIVED = "outside_age_range";

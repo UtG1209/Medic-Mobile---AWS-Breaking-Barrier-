@@ -71,6 +71,7 @@ RULES FOR THE DRAFT
   needs. Link it with variable_id, and also danger_sign_id when the question
   asks a danger sign. answer_type must match the variable: boolean -> yes_no,
   integer -> integer. Always include the question for the child's age.
+- Question and derived ids are form field names: at most 32 characters.
 - Ask as few questions as the logic needs. Do not ask about items the logic
   never reads.
 - shown_when may only read earlier questions. Ask a follow-on question (how
