@@ -24,6 +24,8 @@ export const PATCH_PATHS: Readonly<Record<string, readonly string[]>> = {
   SOURCE_PAGE_MISSING: SOURCES,
   UNCITED_PASSAGE: SOURCES,
   QUOTE_DROPS_NEGATION: SOURCES,
+  // A number not in the item's quotes: the fix is a citation that carries it (re-checked against the PDF).
+  UNGROUNDED_NUMBER: SOURCES,
   GUIDELINE_FILE_MISMATCH: ["/meta/guideline/file_sha256"],
   TEAM_TEXT_TO_CONFIRM: OPEN_Q,
   TEAM_THRESHOLD_UNCONFIRMED: OPEN_Q,
