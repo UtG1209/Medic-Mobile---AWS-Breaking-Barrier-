@@ -234,6 +234,10 @@ describe("default exec", () => {
     await expect(defaultExec(process.execPath, ["-e", ""])).resolves.toBeUndefined();
   });
 
+  it("keeps the reason from stderr in the error (an encrypted or corrupt PDF)", async () => {
+    await expect(defaultExec(process.execPath, ["-e", "console.error('first'); console.error('PDF is encrypted'); process.exit(2)"])).rejects.toThrow(/Command failed: .*PDF is encrypted/);
+  });
+
   it("fails a command that outlives its timeout", async () => {
     const exec = createDefaultExec({ timeoutMs: 100 });
     await expect(exec(process.execPath, ["-e", "setTimeout(() => {}, 10000)"])).rejects.toThrow(/Command failed: .*timed out after 100 ms/);

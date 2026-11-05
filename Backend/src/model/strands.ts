@@ -12,6 +12,9 @@ const TRANSIENT_NAMES = new Set([
   "InternalServerException",
   "TimeoutError",
   "ModelThrottledError",
+  "ModelStreamErrorException",
+  "ModelNotReadyException",
+  "ModelErrorException",
 ]);
 const TRANSIENT_CODES = new Set(["ECONNRESET", "ETIMEDOUT", "ECONNREFUSED", "EPIPE", ...TRANSIENT_NAMES]);
 const TRANSIENT_STATUS = new Set([429, 500, 502, 503, 504]);

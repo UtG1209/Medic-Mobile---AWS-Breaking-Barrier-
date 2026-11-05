@@ -21,6 +21,12 @@ export interface FillLogicOptions {
 
 const MAX_PROBLEMS_LISTED = 30;
 
+// Output cap of a fill call. The hidden thinking of Haiku 5.5 counts too (11k used of the old 16k for a 6 KB draft).
+export const FILL_MAX_TOKENS = 32000;
+
+// Problems that come from the extraction itself: asking the model for the same draft again cannot fix them.
+const EXTRACTION_PROBLEM = /no child age variable|cannot be read as "X months up to/;
+
 function addUsage(a: StepUsage | undefined, b: StepUsage | undefined): StepUsage | undefined {
   if (a === undefined) return b;
   if (b === undefined) return a;
@@ -83,7 +89,7 @@ export function createFillLogicStep(opts: FillLogicOptions): Step {
       const resolveOpts = await resolveOptions(ctx, opts);
       const system = await readFile(opts.promptPath, "utf8");
       const content = extractionContent(runId, ex);
-      const maxTokens = opts.maxTokens ?? 16000;
+      const maxTokens = opts.maxTokens ?? FILL_MAX_TOKENS;
 
       const call = async (
         c: ModelContent[],
@@ -141,10 +147,13 @@ export function createFillLogicStep(opts: FillLogicOptions): Step {
         attempt = tryResolve(second.draft, second.problems);
         draft = second.draft;
         if (attempt.model === undefined) {
-          // The draft is sampled, so a fresh call usually avoids the slip (an outcome used as an action, a number used
-          // as yes/no): retry it. The cost of this attempt's calls is still recorded.
+          const message = `fill_logic: the model draft still has ${attempt.problems.length} problem(s) after one repair: ${attempt.problems.slice(0, 10).join("; ")}`;
+          // A problem in the extraction itself (no age variable, an unreadable age range) comes back every time: do not retry.
+          if (attempt.problems.some((p) => EXTRACTION_PROBLEM.test(p))) throw new UsageError(message, usage);
+          // Otherwise the draft is sampled, so a fresh call usually avoids the slip (an outcome used as an action, a number
+          // used as yes/no): retry it. The cost of this attempt's calls is still recorded.
           throw new TransientUsageError(
-            `fill_logic: the model draft still has ${attempt.problems.length} problem(s) after one repair: ${attempt.problems.slice(0, 10).join("; ")}`,
+            message,
             usage,
           );
         }

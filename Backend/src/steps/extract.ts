@@ -16,6 +16,12 @@ interface InputDoc {
 }
 
 /** A quote the model got almost right, and the deterministic repair applied to it (recorded, never silent). */
+// Output cap of the one extraction call. Haiku 5.5 thinks before it answers and bills the hidden thinking as
+// output: the 12-page cough booklet used 28k to 32k tokens for a 34 KB reply (Haiku 4.5: 10k for 27 KB), so 32k
+// sat at the edge. 64k is the most the AgentCore wire allows and about 3.5 minutes at the model's speed, inside
+// the 6 minute per-call timeout.
+export const EXTRACT_MAX_TOKENS = 64000;
+
 export interface QuoteFix {
   kind: "typography" | "block" | "format" | "span";
   from: { block_id: string; quote: string };
@@ -214,7 +220,7 @@ export function createExtractStep(opts: { modelId: string; promptPath: string; m
           system,
           content,
           schema: ExtractionOutput,
-          maxTokens: opts.maxTokens ?? 32000,
+          maxTokens: opts.maxTokens ?? EXTRACT_MAX_TOKENS,
         });
       } catch (e) {
         if (e instanceof RunawayOutputError) {

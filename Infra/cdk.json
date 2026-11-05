@@ -2,7 +2,7 @@
   "app": "npx ts-node --prefer-ts-exts bin/app.ts",
   "watch": { "include": ["**"], "exclude": ["README.md", "cdk*.json", "node_modules", "test", "cdk.out"] },
   "context": {
-    "uiOrigins": ["http://localhost:5173"],
+    "uiOrigins": ["http://localhost:5173", "https://d1xnuu43bnvo9k.cloudfront.net"],
     "modelId": "us.anthropic.claude-haiku-5-5",
     "prices": {
       "us.anthropic.claude-haiku-5-5": { "inPerMTok": 0.1, "outPerMTok": 0.5 },

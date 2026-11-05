@@ -157,6 +157,18 @@ describe("fill_logic step", () => {
     expect(await artifacts.exists(v1Key)).toBe(false);
   });
 
+  it("does not retry a failure that comes from the extraction (no age variable): UsageError, not transient", async () => {
+    const ex = JSON.parse(extractionText);
+    for (const v of ex.variables) if (/age/i.test(`${v.id} ${v.label}`) || /month/i.test(String(v.unit))) Object.assign(v, { id: "other_" + v.id, label: "Other", unit: null, range_hint: null });
+    const { ctx, artifacts, model } = await setup([good, good]);
+    await artifacts.put(outKey, JSON.stringify(ex));
+    const err = await step.run(ctx).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UsageError);
+    expect(err).not.toBeInstanceOf(TransientError);
+    expect((err as Error).message).toMatch(/after one repair/);
+    expect(model.calls.length).toBeGreaterThan(0);
+  });
+
   it("does not repair a transient model error: it is rethrown for the runner to retry", async () => {
     const { ctx, model } = await setup([new TransientError("throttled")]);
     await expect(step.run(ctx)).rejects.toBeInstanceOf(TransientError);
