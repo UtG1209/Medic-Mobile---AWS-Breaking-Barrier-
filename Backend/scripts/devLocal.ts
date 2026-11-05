@@ -135,7 +135,8 @@ const app = buildServer({
   store,
   artifacts,
   validator: parseModelValidator,
-  presign: async (key) => `http://localhost:${PORT}/__upload/${encodeURIComponent(key)}`,
+  // PUBLIC_API_URL: where the browser reaches this server (e.g. /api behind a Vite proxy); default direct.
+  presign: async (key) => `${process.env["PUBLIC_API_URL"] ?? `http://localhost:${PORT}`}/__upload/${encodeURIComponent(key)}`,
   onVersionSaved,
   onRejected: triggerAgent,
   signoff,

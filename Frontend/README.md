@@ -19,6 +19,13 @@ cd Backend && npm ci && npm run dev:local                          # API on http
 cd Frontend && VITE_API_URL=http://localhost:8787 npm run dev      # UI on http://localhost:5173
 ```
 
+Behind a single port (remote container, port-forward or preview pane): the UI proxies `/api` to dev:local, so the browser only needs 5173.
+
+```
+cd Backend && PUBLIC_API_URL=/api npm run dev:local
+cd Frontend && VITE_API_URL=/api npm run dev:proxy
+```
+
 `<APIURL>` is the `APIURL` output of `OrchestratorLambdaStack` (DEPLOYMENT.md), without the trailing slash. The API allows the origins in the CDK context `uiOrigins` (default `http://localhost:5173`). Optional: `VITE_CLINICIAN_ID` is the clinician's user id for signatures (default `clinician`).
 
 ## How it uses the backend (live mode)
