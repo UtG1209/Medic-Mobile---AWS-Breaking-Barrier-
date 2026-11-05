@@ -16,7 +16,7 @@ import { createStrandsModelClient } from "./model/strands.js";
 import { OfficerAgent } from "./agent/officerAgent.js";
 import { runBackground } from "./api/background.js";
 import * as revisionEngine from "./revision/engine.js";
-import { LambdaClient } from "@aws-sdk/client-lambda";
+import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { InProcessDispatcher, LambdaAsyncDispatcher } from "./revision/dispatch.js";
 import type { RevisionDispatcher } from "./revision/dispatch.js";
 import { RevisionService } from "./revision/service.js";
@@ -72,10 +72,31 @@ async function main(): Promise<void> {
 
   // The officer agent is built after the orchestrator and signoff; the hooks below reach it through this holder.
   const triggers: { agent?: OfficerAgent } = {};
+
+  // In lambda mode the POST /versions handler must respond before API Gateway's 30 s integration timeout,
+  // so the officer agent is dispatched via async self-invoke instead of running in-process.
+  let officerAsyncDispatch: ((runId: string) => Promise<void>) | undefined;
+  if (cfg.runMode === "lambda") {
+    const fn = process.env["AWS_LAMBDA_FUNCTION_NAME"];
+    if (!fn) throw new Error("RUN_MODE=lambda needs AWS_LAMBDA_FUNCTION_NAME (set by the Lambda runtime)");
+    const lambdaForOfficer = new LambdaClient({ region: cfg.region });
+    officerAsyncDispatch = async (runId: string): Promise<void> => {
+      const payload = JSON.stringify({ source: "officer", runId });
+      const res = await lambdaForOfficer.send(new InvokeCommand({ FunctionName: fn, InvocationType: "Event", Payload: new TextEncoder().encode(payload) }));
+      if (res.StatusCode !== 202) throw new Error(`Officer async invoke answered ${String(res.StatusCode)}`);
+    };
+  }
+
   const triggerAgent = (runId: string): Promise<void> => {
     const agent = triggers.agent;
     if (!agent) return Promise.resolve();
     // Idempotent: the agent's state record per base version stops a second run from doing the work twice.
+    if (officerAsyncDispatch) {
+      // lambda mode: async self-invoke so POST /versions is not blocked past the API GW 30 s timeout.
+      return officerAsyncDispatch(runId).catch((e: unknown) =>
+        log("officer trigger dispatch failed", { runId, error: e instanceof Error ? e.message : String(e) }),
+      );
+    }
     return runBackground(cfg.runMode, agent.onAwaitingOfficer(runId), (e) =>
       log("officer agent failed", { runId, error: e instanceof Error ? e.message : String(e) }),
     );
@@ -202,6 +223,10 @@ async function main(): Promise<void> {
       }),
     onVersionSaved,
     onRejected: triggerAgent,
+    onOfficerEvent: (runId) => {
+      const agent = triggers.agent;
+      return agent ? agent.onAwaitingOfficer(runId) : Promise.resolve();
+    },
     signoff,
     revisions,
     chat: { model, modelId: cfg.chatModelId, prices: cfg.prices, maxCostUsd: cfg.chatMaxCostUsd, maxTokens: cfg.chatMaxTokens, ratePerMin: cfg.chatRatePerMin },

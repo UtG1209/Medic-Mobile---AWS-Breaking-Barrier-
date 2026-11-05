@@ -76,7 +76,14 @@ export function ReleaseScreen({ w, role, act }: { w: Workflow | null; role: Role
         actions={w.state === "verify" ? <button type="button" className="btn primary" onClick={act.runVerify}><Icon name="science" size={18} />Run synthetic check</button>
           : w.state === "deploy" ? <button type="button" className="btn primary" disabled={role !== "it"} onClick={act.approveDeploy}><Icon name="rocket_launch" size={18} />Approve deploy</button>
           : <span className="st ok">Deployed</span>} />
-      {w.state === "deploy" && role !== "it" ? <div className="note">Only the IT approver can approve the deploy. The clinician approved the content, so they can't also deploy it.</div> : null}
+      {w.state === "deploy" && role !== "it" ? (
+        <div className="banner" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <span>The deploy requires the IT approver role. Use the <b>Viewing as</b> dropdown in the top bar, or:</span>
+          <button type="button" className="btn primary" onClick={() => act.setRole("it")}>
+            <Icon name="swap_horiz" size={18} />Switch to IT approver
+          </button>
+        </div>
+      ) : null}
 
       {!v ? (
         <div className="banner">The system builds the form with cht-conf, then runs every synthetic patient through (a) the approved rules in code and (b) the filled form in cht-conf-test-harness. Any mismatch returns the change to the clinician.</div>

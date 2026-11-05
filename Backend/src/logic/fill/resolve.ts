@@ -74,6 +74,33 @@ export function parseAgeBand(text: string | null | undefined): Band | undefined 
 }
 
 /**
+ * The form's age range when the age variable's range_hint is empty or unreadable: first the variable's own
+ * label and quotes, then the widest span of the age bands on thresholds and dose tables. Undefined when none read.
+ */
+export function inferScope(
+  ex: ExtractionOutput,
+  ageVariable: { label?: string | null; src: readonly { quote: string }[] },
+): { band: Band; from: string } | undefined {
+  for (const t of [ageVariable.label ?? "", ...ageVariable.src.map((s) => s.quote)]) {
+    const b = parseAgeBand(t);
+    if (b !== undefined) return { band: b, from: "the age variable's own wording" };
+  }
+  const bands: Band[] = [];
+  for (const t of ex.thresholds) {
+    const b = t.age_band === null ? undefined : parseAgeBand(t.age_band);
+    if (b !== undefined) bands.push(b);
+  }
+  for (const a of ex.actions) {
+    const d = a.dose_text !== null ? parseDoseText(a.dose_text) : undefined;
+    if (d !== undefined) for (const x of d) bands.push({ min: x.age_months_min, below: x.age_months_below });
+  }
+  if (bands.length === 0) return undefined;
+  const min = Math.min(...bands.map((b) => b.min));
+  const below = Math.max(...bands.map((b) => b.below));
+  return min < below ? { band: { min, below }, from: "the age bands of the guideline's cut-offs and doses" } : undefined;
+}
+
+/**
  * "Age 2 months up to 12 months—1 tablet; Age 12 months up to 5 years—2 tablets", optionally with
  * "(total 10 tabs)" after a dose. Every segment must parse, or the result is undefined.
  */
@@ -282,6 +309,7 @@ export function resolveDraft(draft: Draft, ex: Ex, opts: ResolveOptions): Resolv
   const ageQuestionId = ageVariable !== undefined ? qByVariable.get(ageVariable.id) : undefined;
   const ageQuestion = ageQuestionId !== undefined ? qById.get(ageQuestionId) : undefined;
   let scope: Band | undefined;
+  let scopeInferredFrom: string | undefined;
   if (ageVariable === undefined) {
     problem("The extraction has no child age variable (unit months), so the age range the form covers cannot be set.");
   } else {
@@ -289,7 +317,17 @@ export function resolveDraft(draft: Draft, ex: Ex, opts: ResolveOptions): Resolv
       problem(`Add an integer question with variable_id "${ageVariable.id}" (the child's age); the age range and age bands need it.`);
     }
     scope = parseAgeBand(ageVariable.range_hint);
-    if (scope === undefined) problem(`The age range of variable "${ageVariable.id}" ("${ageVariable.range_hint ?? ""}") cannot be read as "X months up to Y months/years".`);
+    if (scope === undefined) {
+      // The draft cannot change the extraction, so a repair call can never fix an empty or unreadable
+      // range_hint. Infer the range from the extraction's own text instead and ask the clinician to confirm.
+      const inferred = inferScope(ex, ageVariable);
+      if (inferred === undefined) {
+        problem(`The age range of variable "${ageVariable.id}" ("${ageVariable.range_hint ?? ""}") cannot be read as "X months up to Y months/years".`);
+      } else {
+        scope = inferred.band;
+        scopeInferredFrom = inferred.from;
+      }
+    }
   }
 
   // ---- thresholds: which can be written exactly ----
@@ -441,6 +479,7 @@ export function resolveDraft(draft: Draft, ex: Ex, opts: ResolveOptions): Resolv
   });
 
   // ---- outcomes ----
+  const droppedRefs: string[] = [];
   const unparsedDoses: { outcome: string; action: string; text: string }[] = [];
   const unparsedFollowups: { outcome: string; followup: string; text: string }[] = [];
   const scheduledFollowups: string[] = [];
@@ -482,7 +521,9 @@ export function resolveDraft(draft: Draft, ex: Ex, opts: ResolveOptions): Resolv
         }
         return [{ text: clipText(text), ...sourced(src) }];
       }
-      if (n !== undefined) problem(`Outcome "${o.id}": "${aid}" is a ${n.kind} node, not an action or advice; list extraction.actions ids or action/advice node ids.`);
+      // A non-action node (often the outcome's own node) carries no step to show: drop it. If nothing is left,
+      // the outcome gets the team placeholder below, which the open questions list for the clinician.
+      if (n !== undefined) droppedRefs.push(`${o.id} → ${aid} (${n.kind})`);
       else problem(`Outcome "${o.id}": action "${aid}" is not in extraction.actions or extraction.nodes.`);
       return [];
     });
@@ -821,6 +862,20 @@ export function resolveDraft(draft: Draft, ex: Ex, opts: ResolveOptions): Resolv
       route_to: "clinician",
     });
   }
+  if (scopeInferredFrom !== undefined && scope !== undefined) {
+    oqs.push({
+      question: clipText(`The guideline reading did not record the age range the form covers, so it was taken from ${scopeInferredFrom}: ${scope.min} months up to ${scope.below} months. Is that the right age range?`),
+      affects: ageQuestionId !== undefined ? [ageQuestionId] : [],
+      route_to: "clinician",
+    });
+  }
+  if (droppedRefs.length > 0) {
+    oqs.push({
+      question: clipText(`The draft listed steps that are not actions or advice, so they were left out of the results: ${droppedRefs.join("; ")}. Check that each result shows the right steps.`),
+      affects: [...new Set(droppedRefs.map((r) => r.split(" → ")[0] as string))],
+      route_to: "clinician",
+    });
+  }
   const teamOnly = [...new Set(teamItems)];
   if (teamOnly.length > 0) {
     oqs.push({
@@ -856,7 +911,7 @@ export function resolveDraft(draft: Draft, ex: Ex, opts: ResolveOptions): Resolv
     scope: {
       age_months_min: (scope as Band).min,
       age_months_below: (scope as Band).below,
-      source: sources(ageVariable!.src).length > 0 ? sources(ageVariable!.src) : [{ page: 1, quote: ageVariable!.range_hint ?? "age" }],
+      source: sources(ageVariable!.src).length > 0 ? sources(ageVariable!.src) : [{ page: 1, quote: ageVariable!.range_hint?.trim() || ageVariable!.label?.trim() || "age" }],
       excluded,
     },
     questions,
