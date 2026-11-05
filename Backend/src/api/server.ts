@@ -26,6 +26,7 @@ import {
   LambdaRevisionEvent,
   LambdaScheduledEvent,
   LambdaOfficerEvent,
+  LambdaContinueEvent,
   LambdaSqsEnvelope,
   LambdaSqsRecord,
   RejectRequest,
@@ -51,6 +52,8 @@ export interface OrchestratorPort {
   resume(runId: string): Promise<void>;
   prepareResume(runId: string): Promise<void>;
   onUploaded(runId: string): Promise<void>;
+  // Runs the run's next steps (used by the lambda-mode pipeline hand-off). Optional so test doubles need not have it.
+  advance?(runId: string): Promise<void>;
   resumeAll(): Promise<void>;
   activeCount(): number;
   lastStatusChange(): number | undefined;
@@ -571,6 +574,21 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
           });
           if (!(await withDeadline(work, eventsDeadline))) {
             req.log.error({ runId }, "officer agent event reached the events deadline");
+          }
+        }
+        return reply.code(200).send({ ok: true });
+      }
+      const cont = LambdaContinueEvent.safeParse(req.body);
+      if (cont.success) {
+        // Pipeline hand-off: the next step in this fresh invocation. Errors are recorded on the run by the engine;
+        // a run left unfinished keeps no lease, so the resume sweep continues it.
+        const { runId } = cont.data;
+        if (orchestrator.advance) {
+          const work = orchestrator.advance(runId).catch((e: unknown) => {
+            req.log.error({ runId, errName: errName(e) }, "pipeline continue event threw");
+          });
+          if (!(await withDeadline(work, eventsDeadline))) {
+            req.log.error({ runId }, "pipeline continue event reached the events deadline");
           }
         }
         return reply.code(200).send({ ok: true });

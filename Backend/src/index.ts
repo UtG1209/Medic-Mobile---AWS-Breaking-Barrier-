@@ -77,6 +77,8 @@ async function main(): Promise<void> {
   // In lambda mode the POST /versions handler must respond before API Gateway's 30 s integration timeout,
   // so the officer agent is dispatched via async self-invoke instead of running in-process.
   let officerAsyncDispatch: ((runId: string) => Promise<void>) | undefined;
+  // In lambda mode each pipeline step runs in its own invocation (see continueElsewhere in src/engine/engine.ts).
+  let continueAsync: ((runId: string) => Promise<void>) | undefined;
   if (cfg.runMode === "lambda") {
     const fn = process.env["AWS_LAMBDA_FUNCTION_NAME"];
     if (!fn) throw new Error("RUN_MODE=lambda needs AWS_LAMBDA_FUNCTION_NAME (set by the Lambda runtime)");
@@ -85,6 +87,11 @@ async function main(): Promise<void> {
       const payload = JSON.stringify({ source: "officer", runId });
       const res = await lambdaForOfficer.send(new InvokeCommand({ FunctionName: fn, InvocationType: "Event", Payload: new TextEncoder().encode(payload) }));
       if (res.StatusCode !== 202) throw new Error(`Officer async invoke answered ${String(res.StatusCode)}`);
+    };
+    continueAsync = async (runId: string): Promise<void> => {
+      const payload = JSON.stringify({ source: "continue", runId });
+      const res = await lambdaForOfficer.send(new InvokeCommand({ FunctionName: fn, InvocationType: "Event", Payload: new TextEncoder().encode(payload) }));
+      if (res.StatusCode !== 202) throw new Error(`Pipeline continue invoke answered ${String(res.StatusCode)}`);
     };
   }
 
@@ -126,6 +133,7 @@ async function main(): Promise<void> {
     ],
     finalState: "awaiting_officer",
     onFinalState: triggerAgent,
+    ...(continueAsync ? { continueElsewhere: continueAsync } : {}),
     log,
     owner: randomUUID(),
     leaseMs: cfg.leaseMs,
