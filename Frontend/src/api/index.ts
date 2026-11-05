@@ -12,7 +12,7 @@ import { FALLBACK_TEXT } from "../domain/agent";
 import { sampleScores } from "../domain/scores";
 import { AUTH, currentUser, idToken, signIn } from "../auth";
 import { item } from "../../../shared/pathway/index.ts";
-import type { AuditRow, CrossFlags, Escalation, Guideline, GuidelineType, ItemId, Model, Patch, QuoteScores, Spec, Workflow } from "../domain/types";
+import type { AuditRow, BackendGolden, CrossFlags, Escalation, Guideline, GuidelineType, ItemId, Model, Patch, QuoteScores, Spec, Workflow } from "../domain/types";
 
 export const API_URL: string | undefined = import.meta.env.VITE_API_URL?.replace(/\/+$/, "") || undefined;
 /** True when guidelines come from the backend pipeline rather than sample data. */
@@ -202,6 +202,20 @@ async function loadScores(runId: string, n: number, model: Model): Promise<Quote
   }
 }
 
+/* ---------- Golden cases (the backend runs them; the card shows its result) ---------- */
+/** The backend's golden-case result of version n, read from its findings (both audiences carry the same ones). Null when it reported none. */
+export function goldenFrom(n: number, findings: readonly { severity: string; message: string; check: string }[]): BackendGolden | null {
+  const own = findings.filter(f => f.check === "goldenCases");
+  if (!own.length) return null;
+  const seen = new Set<string>();
+  const uniq = own.filter(f => (seen.has(f.message) ? false : (seen.add(f.message), true)));
+  const count = uniq.map(f => /(\d+) test cases? (?:was|were) run through the draft: (\d+) give the expected result/.exec(f.message)).find(Boolean);
+  const issues = uniq
+    .filter(f => f.severity !== "info")
+    .map(f => ({ sev: (f.severity === "blocking" ? "blocking" : "warning") as "blocking" | "warning", text: f.message }));
+  return { n, ...(count ? { run: Number(count[1]), passed: Number(count[2]) } : {}), issues };
+}
+
 /* ---------- Cross check (advisory) ---------- */
 /** The backend's cross-check flags of version n. Never throws: null leaves the stage saying it could not load. */
 async function loadCross(runId: string, n: number): Promise<CrossFlags | null> {
@@ -238,7 +252,7 @@ async function loadEscalation(runId: string): Promise<Escalation | null> {
   }
 }
 /** The workflow with the cross check of a newly loaded backend version. */
-const withCross = (w: Workflow, cross: CrossFlags | null): Workflow => ({ ...w, evidence: { ...w.evidence, cross } });
+const withCross = (w: Workflow, cross: CrossFlags | null): Workflow => ({ ...w, evidence: { ...w.evidence, cross, golden: w.remote ? goldenFrom(w.remote.n, w.remote.findings) : null } });
 class OfficerNotSigned extends Error {}
 
 /* ---------- Workflow ---------- */
@@ -259,7 +273,7 @@ export async function createDraft(args: { guidelineId: string; pathway: string; 
     ]);
     const flat = (f: FindingsView, role: "clinician" | "program_officer") => f.groups.flatMap(gr => gr.findings.map(x => ({ severity: gr.severity, message: x.message, check: x.check, role })));
     const remote = { runId: g.id, n: last.n, modelSha: fc.modelSha, base: clone(model), claimText: fc.claimText, findings: [...flat(fc, "clinician"), ...flat(fo, "program_officer")] };
-    const evidence = { pages: null, pagesFrom: "Guideline text stays in the backend; its own quote check is in the backend findings", draftB: null, draftBFrom: "The backend runs the cross check itself", cross };
+    const evidence = { pages: null, pagesFrom: "Guideline text stays in the backend; its own quote check is in the backend findings", draftB: null, draftBFrom: "The backend runs the cross check itself", cross, golden: goldenFrom(last.n, remote.findings) };
     workflows[id] = wf.createDraft(wf.initialWorkflow(id), { id: g.id, name: g.name, pathway: args.pathway, pages: args.pages }, {
       model, evidence, remote,
       event: "Loaded logic model version " + last.n + " from the backend (run " + g.id + ")",

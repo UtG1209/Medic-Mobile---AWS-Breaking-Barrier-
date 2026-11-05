@@ -5,7 +5,7 @@
 import { analyze, applyPatch, item, crossCheck, literals, numberResults, quoteResults, type ItemId, type Spec } from "../../../shared/pathway/index.ts";
 import { GOLDEN } from "./data";
 import { classify, describeP, golden, grid, itemLabel, outName } from "./logic";
-import type { Check, CheckKey, CrossFlags, Evidence } from "./types";
+import type { BackendGolden, Check, CheckKey, CrossFlags, Evidence } from "./types";
 
 export type StageStatus = "pass" | "warn" | "fail" | "skipped" | "missing";
 export interface Part { name: string; ok: boolean; text: string }
@@ -86,6 +86,18 @@ function subjectItem(s: { kind: string; id: string } | undefined): ItemId {
   }
 }
 
+/** The golden cases as the backend ran them on the loaded version (live mode). A case that does not give the expected result shows as
+    "Needs fixing" but does not add to the approval gate: the backend leaves those findings to the clinician, who decides when approving. */
+function backendGolden(g: BackendGolden): Omit<Stage, "key" | "n" | "name" | "desc" | "asks" | "owner"> {
+  const uses = "Backend golden cases for version " + g.n;
+  const issues: Check[] = g.issues.map(i => ({ kind: "golden", sev: "warning", id: item.scope, text: i.text }));
+  const failed = g.passed !== undefined && g.run !== undefined ? g.run - g.passed : g.issues.filter(i => i.sev === "blocking").length;
+  const summary = g.run !== undefined && g.passed !== undefined
+    ? g.passed + " of " + g.run + " golden cases match" + (failed > 0 ? ": " + failed + " do not" : "")
+    : g.issues.length ? g.issues.length + " note" + (g.issues.length > 1 ? "s" : "") + " on the golden cases" : "The golden cases ran";
+  return { status: failed > 0 ? "fail" : statusOf(issues), issues, uses, summary };
+}
+
 /** The cross check as the backend ran it on the loaded version (live mode). Every flag is a warning: none blocks signing. */
 function backendCross(c: CrossFlags): Omit<Stage, "key" | "n" | "name" | "desc" | "asks" | "owner"> {
   const uses = "Backend cross-check of version " + c.n;
@@ -141,7 +153,8 @@ export function checkStages(m: Spec, ev: Evidence): Stage[] {
   add("logic", logic(m));
 
   const gc = GOLDEN[m.meta.pathway_id];
-  if (!gc) add("golden", { status: "missing", issues: [], summary: "Needs a golden case file for " + m.meta.pathway_id + "." });
+  if (ev.golden) add("golden", backendGolden(ev.golden));
+  else if (!gc) add("golden", { status: "missing", issues: [], summary: "Needs a golden case file for " + m.meta.pathway_id + "." });
   else {
     const g = golden(m), bad = g.filter(x => !x.ok);
     add("golden", {
