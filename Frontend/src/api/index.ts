@@ -48,11 +48,22 @@ const me = (): string => (AUTH ? currentUser()?.email.toLowerCase() : undefined)
 
 const WORK: [RunState, string][] = [["created", "Upload to S3"], ["ingesting", "Read pages"], ["extracting", "Extract"], ["filling_logic", "Draft logic model"], ["checking", "Backend checks"], ["awaiting_officer", "AI agent checks"]];
 const READY: RunState[] = ["in_review", "awaiting_clinician", "locked"];
+const ABANDONED_MS = 10 * 60 * 1000;
 const names = (): Record<string, string> => { try { return JSON.parse(localStorage.getItem("runNames") || "{}"); } catch { return {}; } };
 const nameRun = (id: string, n: string) => { try { localStorage.setItem("runNames", JSON.stringify({ ...names(), [id]: n })); } catch { /* private mode */ } };
 
 function toGuideline(r: Run, steps?: StepRecord[], escalated = false): Guideline {
   // The officer agent gave up on this draft and left it for a person: the clinician can open it (and answer through chat, feedback or edits).
+  // A run still at "created" long after it was made never got its file (the tab closed or the PUT was blocked mid-upload).
+  const abandoned = r.state === "created" && Date.now() - r.createdAt > ABANDONED_MS;
+  if (abandoned) {
+    return {
+      id: r.runId, name: names()[r.runId] ?? "Run " + r.runId.slice(0, 8), type: "PDF",
+      meta: new Date(r.createdAt).toLocaleString() + " · upload did not finish", status: "Failed", pages: r.pages?.length ?? null,
+      steps: WORK.map(([s, label], i) => ({ key: s, label, state: i === 0 ? "failed" : "pending" })),
+      error: "The file never reached S3, so processing did not start. Upload the PDF again.",
+    };
+  }
   const failed = r.state === "failed", ready = READY.includes(r.state) || (r.state === "awaiting_officer" && escalated);
   const at = WORK.findIndex(([s]) => s === r.state);
   const err = steps?.filter(s => s.status === "failed").pop()?.error;
