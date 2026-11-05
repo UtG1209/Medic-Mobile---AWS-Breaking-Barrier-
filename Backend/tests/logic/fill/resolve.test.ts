@@ -186,6 +186,17 @@ describe("draft problems (repairable)", () => {
     expect(m.open_questions.some((q) => /did not record the age range/.test(q.question))).toBe(true);
   });
 
+  it("cites the guideline's own statement of the age range when it infers it", () => {
+    const e = extraction((x) => {
+      x.variables[0]!.range_hint = "";
+      x.variables[0]!.src = src(1, "Ask the child's age in months");
+      x.nodes[0]!.src = [...x.nodes[0]!.src, ...src(1, "Use this chart for a child age 2 months up to 5 years")];
+    });
+    const m = ok(draft(), e);
+    expect([m.scope.age_months_min, m.scope.age_months_below]).toEqual([2, 60]);
+    expect([m.scope.source].flat().map((s) => s.quote).join(" ")).toMatch(/2 months up to 5 years/);
+  });
+
   it("still reports an age range it cannot infer from anything", () => {
     const e = extraction((x) => {
       x.variables[0]!.range_hint = "";
@@ -193,6 +204,8 @@ describe("draft problems (repairable)", () => {
       x.variables[0]!.src = src(1, "child age");
       for (const t of x.thresholds) t.age_band = null;
       for (const a of x.actions) a.dose_text = null;
+      const noBand = (xs: { quote: string }[]) => xs.filter((q) => !/\d+\s*(months?|years?)\s+(up\s+)?to/i.test(q.quote));
+      for (const it of [...x.nodes, ...x.variables, ...x.thresholds, ...x.actions]) it.src = noBand(it.src) as typeof it.src;
     });
     expect(problems(draft(), e).join("\n")).toMatch(/cannot be read as/);
   });

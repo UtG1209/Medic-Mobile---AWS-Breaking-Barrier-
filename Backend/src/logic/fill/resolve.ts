@@ -74,30 +74,45 @@ export function parseAgeBand(text: string | null | undefined): Band | undefined 
 }
 
 /**
- * The form's age range when the age variable's range_hint is empty or unreadable: first the variable's own
- * label and quotes, then the widest span of the age bands on thresholds and dose tables. Undefined when none read.
+ * The form's age range when the age variable's range_hint is empty or unreadable, with the quotes that state
+ * it (so the checks find both numbers in the cited text): first the age variable's own quotes, then the widest
+ * age range written in any quote of the extraction (a booklet usually says "Use this chart for a child age
+ * 2 months up to 5 years"), then the widest span of the age bands on thresholds and dose tables. Undefined when none read.
  */
 export function inferScope(
   ex: ExtractionOutput,
-  ageVariable: { label?: string | null; src: readonly { quote: string }[] },
-): { band: Band; from: string } | undefined {
-  for (const t of [ageVariable.label ?? "", ...ageVariable.src.map((s) => s.quote)]) {
-    const b = parseAgeBand(t);
-    if (b !== undefined) return { band: b, from: "the age variable's own wording" };
+  ageVariable: { src: readonly ExSrc[] },
+): { band: Band; from: string; src: ExSrc[] } | undefined {
+  for (const s of ageVariable.src) {
+    const b = parseAgeBand(s.quote);
+    if (b !== undefined) return { band: b, from: "the age variable's own wording", src: [s] };
   }
-  const bands: Band[] = [];
+  const all: ExSrc[] = [
+    ...ex.nodes.flatMap((n) => n.src),
+    ...ex.variables.flatMap((v) => v.src),
+    ...ex.thresholds.flatMap((t) => t.src),
+    ...ex.actions.flatMap((a) => a.src),
+  ];
+  let best: { band: Band; src: ExSrc } | undefined;
+  for (const s of all) {
+    const b = parseAgeBand(s.quote);
+    if (b !== undefined && (best === undefined || b.below - b.min > best.band.below - best.band.min)) best = { band: b, src: s };
+  }
+  if (best !== undefined) return { band: best.band, from: "the guideline's own statement of the ages it covers", src: [best.src] };
+  const bands: { band: Band; src: ExSrc[] }[] = [];
   for (const t of ex.thresholds) {
     const b = t.age_band === null ? undefined : parseAgeBand(t.age_band);
-    if (b !== undefined) bands.push(b);
+    if (b !== undefined) bands.push({ band: b, src: t.src });
   }
   for (const a of ex.actions) {
     const d = a.dose_text !== null ? parseDoseText(a.dose_text) : undefined;
-    if (d !== undefined) for (const x of d) bands.push({ min: x.age_months_min, below: x.age_months_below });
+    if (d !== undefined) for (const x of d) bands.push({ band: { min: x.age_months_min, below: x.age_months_below }, src: a.src });
   }
   if (bands.length === 0) return undefined;
-  const min = Math.min(...bands.map((b) => b.min));
-  const below = Math.max(...bands.map((b) => b.below));
-  return min < below ? { band: { min, below }, from: "the age bands of the guideline's cut-offs and doses" } : undefined;
+  const lo = bands.reduce((m, b) => (b.band.min < m.band.min ? b : m));
+  const hi = bands.reduce((m, b) => (b.band.below > m.band.below ? b : m));
+  if (lo.band.min >= hi.band.below) return undefined;
+  return { band: { min: lo.band.min, below: hi.band.below }, from: "the age bands of the guideline's cut-offs and doses", src: [...new Set([...lo.src, ...hi.src])] };
 }
 
 /**
@@ -310,6 +325,8 @@ export function resolveDraft(draft: Draft, ex: Ex, opts: ResolveOptions): Resolv
   const ageQuestion = ageQuestionId !== undefined ? qById.get(ageQuestionId) : undefined;
   let scope: Band | undefined;
   let scopeInferredFrom: string | undefined;
+  /** The quotes the age range rests on: the age variable's, or those it was inferred from. */
+  let scopeSrc: ExSrc[] = ageVariable?.src ?? [];
   if (ageVariable === undefined) {
     problem("The extraction has no child age variable (unit months), so the age range the form covers cannot be set.");
   } else {
@@ -326,6 +343,7 @@ export function resolveDraft(draft: Draft, ex: Ex, opts: ResolveOptions): Resolv
       } else {
         scope = inferred.band;
         scopeInferredFrom = inferred.from;
+        scopeSrc = inferred.src;
       }
     }
   }
@@ -607,7 +625,7 @@ export function resolveDraft(draft: Draft, ex: Ex, opts: ResolveOptions): Resolv
     };
     const withDanger = draft.derived.some((d) => d.id === "danger_sign");
     // The age check as a calculated value (read by the rules below), placed before the draft's own.
-    const ageSrc = sources(ageVariable!.src).length > 0 ? sources(ageVariable!.src) : [{ page: 1, quote: ageVariable!.range_hint ?? "age" }];
+    const ageSrc = sources(scopeSrc).length > 0 ? sources(scopeSrc) : [{ page: 1, quote: ageVariable!.range_hint ?? "age" }];
     if (withDanger) derived.unshift({ id: AGE_DERIVED, label: "Outside the age range this guideline covers", definition: outsideCond, ...sourced(ageSrc) });
     const outsideIs: Condition = withDanger ? { field: AGE_DERIVED, op: "is_yes" } : outsideCond;
     if (withDanger) {
@@ -911,7 +929,7 @@ export function resolveDraft(draft: Draft, ex: Ex, opts: ResolveOptions): Resolv
     scope: {
       age_months_min: (scope as Band).min,
       age_months_below: (scope as Band).below,
-      source: sources(ageVariable!.src).length > 0 ? sources(ageVariable!.src) : [{ page: 1, quote: ageVariable!.range_hint?.trim() || ageVariable!.label?.trim() || "age" }],
+      source: sources(scopeSrc).length > 0 ? sources(scopeSrc) : [{ page: 1, quote: ageVariable!.range_hint?.trim() || ageVariable!.label?.trim() || "age" }],
       excluded,
     },
     questions,
