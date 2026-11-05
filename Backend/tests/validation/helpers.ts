@@ -46,7 +46,7 @@ export const codesOf = (fs: readonly { code: string }[]): string[] => fs.map((f)
 export const JARGON_RE = />=|<=|==|!=|=>|\bAST\b|\bgrid\b|\bjson\b|\bschema\b|\boperator|\bboolean\b|\binteger\b|\bsha\b|\bhash\b|\bchecksum\b|\bfield\b|\bregex\b|undefined|\[object|\bnull\b|\bNaN\b/i;
 
 export const rawExtraction = (): any => JSON.parse(readFileSync(path.join(dir, "../../extraction/extraction_output.json"), "utf8"));
-export const rawGoldenCases = (): any => JSON.parse(readFileSync(path.join(dir, "../fixtures/logic/golden-proposed.json"), "utf8"));
+export const rawGoldenCases = (): any => JSON.parse(readFileSync(path.join(dir, "../fixtures/logic/golden-testcases.json"), "utf8"));
 export const demoSettings = (): any => JSON.parse(readFileSync(path.join(dir, "../../compile-demo/settings.demo.json"), "utf8"));
 
 import { loadExtraction, loadGoldenCases } from "../../src/validation/context.js";

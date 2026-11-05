@@ -41,11 +41,11 @@ export const fullyResolved = (): Model => resolveForDemo(officerFixed(), "clinic
 export const shaOf = (m: Model): string => modelSha(m);
 
 /**
- * The proposed golden cases (tests/fixtures/logic/golden-proposed.json, awaiting Medic). Their outcome ids
+ * The golden cases (tests/fixtures/logic/golden-testcases.json: GF01 to GF12 Medic confirmed, g01 to g20 awaiting Medic). Their outcome ids
  * match the ones the fill step writes. TEST-ONLY, not clinical decisions.
  */
 export function testGoldenCases(): GoldenCase[] {
-  const g = loadGoldenCases(JSON.parse(readFileSync(path.join(backend, "tests", "fixtures", "logic", "golden-proposed.json"), "utf8")));
+  const g = loadGoldenCases(JSON.parse(readFileSync(path.join(backend, "tests", "fixtures", "logic", "golden-testcases.json"), "utf8")));
   return g;
 }
 

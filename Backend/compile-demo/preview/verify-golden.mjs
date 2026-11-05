@@ -4,7 +4,7 @@
 // imported directly). The compiled form runs in headless Chrome inside the preview page, i.e. in
 // enketo-core 7.2.5 + openrosa-xpath-evaluator 2.0.13 with the CHT webapp's config.
 //
-//   1. Golden cases (tests/fixtures/logic/golden-proposed.json): UI level. Each case is typed into
+//   1. Golden cases (tests/fixtures/logic/golden-testcases.json): UI level. Each case is typed into
 //      the real inputs (radio clicks, number fields + change), the real Next button is pressed, and
 //      the saved calculate values and the visible result notes are read. Only the screens that
 //      appear are answered (the derived flow skips questions that cannot change the outcome), and
@@ -41,7 +41,7 @@ const FIXTURES = join(BACKEND_DIR, "tests", "fixtures", "logic");
 const parsed = parseModel(JSON.parse(readFileSync(join(FIXTURES, "v1.json"), "utf8")));
 if (!parsed.ok) throw new Error("v1.json does not parse: " + parsed.issues.join("; "));
 const model = parsed.value;
-const golden = JSON.parse(readFileSync(join(FIXTURES, "golden-proposed.json"), "utf8"));
+const golden = JSON.parse(readFileSync(join(FIXTURES, "golden-testcases.json"), "utf8"));
 
 // The flow mode the compiled form was built with (manifest written by compile:demo).
 const manifest = JSON.parse(readFileSync(join(OUTPUT_DIR, "manifest.json"), "utf8"));

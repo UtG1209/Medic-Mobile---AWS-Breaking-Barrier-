@@ -1,26 +1,22 @@
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { evaluate } from "../../src/logic/interpreter.js";
 import { goldenCasesCheck } from "../../src/validation/checks/goldenCases.js";
 import { loadGoldenCases } from "../../src/validation/context.js";
 import { rawGolden, v1 } from "./helpers.js";
 
-// golden-testcases.json = the 20 proposed cases (g01 to g20, golden-proposed.json) followed by the 12
+// golden-testcases.json = the 20 proposed cases g01 to g20 (awaiting Medic) followed by the 12
 // Medic-confirmed cases GF01 to GF12 from golden-cases-final-12-annotated.xlsx.
-const fixtures = join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "logic");
-const raw = JSON.parse(readFileSync(join(fixtures, "golden-testcases.json"), "utf8"));
-const cases = loadGoldenCases(raw);
-const confirmedIds = Array.from({ length: 12 }, (_, i) => `GF${String(i + 1).padStart(2, "0")}`);
+const cases = loadGoldenCases(rawGolden());
+const ids = (prefix: string, n: number): string[] => Array.from({ length: n }, (_, i) => `${prefix}${String(i + 1).padStart(2, "0")}`);
 const confirmed = cases.filter((c) => c.id.startsWith("GF"));
 
 describe("golden-testcases.json (merged golden cases)", () => {
-  it("is the proposed cases unchanged, followed by GF01 to GF12", () => {
-    const proposed = rawGolden();
-    expect(raw.slice(0, proposed.length)).toEqual(proposed);
-    expect(raw.slice(proposed.length).map((c: { id: string }) => c.id)).toEqual(confirmedIds);
-    expect(cases).toHaveLength(proposed.length + 12);
+  it("holds g01 to g20 followed by GF01 to GF12, with unique ids", () => {
+    expect(cases.map((c) => c.id)).toEqual([...ids("g", 20), ...ids("GF", 12)]);
+  });
+
+  it("keeps g01 to g20 marked as not yet confirmed by Medic", () => {
+    for (const c of cases.filter((c) => c.id.startsWith("g"))) expect(c.note).toMatch(/pending|awaiting|not (?:yet )?(?:clinically )?confirmed/i);
   });
 
   it.each(cases.map((c) => [c.id, c] as const))("%s gets its expected outcome through its expected rule", (_id, c) => {
