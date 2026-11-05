@@ -74,15 +74,19 @@ describe("OfficerAgent", () => {
     expect((call.content[0] as { text: string }).text).toContain('<data label="findings">');
   });
 
-  it("refuses a patch outside the allowed paths, makes no version, and escalates", async () => {
+  it("refuses a patch outside the allowed paths, retries once naming them, makes no version, and escalates", async () => {
     const bad = { raw: JSON.stringify({ ops: [{ op: "replace", path: "/rules/0/outcome", value: "refer_urgent" }] }), usage };
-    const s = await setup([broken()], [bad]);
+    const s = await setup([broken()], [bad, bad]);
     await s.agent.onAwaitingOfficer("r1");
+    expect(s.model.calls).toHaveLength(2);
+    const second = (s.model.calls[1]!.content[0] as { text: string }).text;
+    expect(second).toContain('<data label="refused_paths">');
+    expect(second).toContain("/rules/0/outcome");
     expect(await s.store.listVersions("r1")).toHaveLength(1);
     const comments = await s.store.listComments("r1", 1);
     expect(comments[0]!.itemRef).toBe("agent:escalation");
     expect((await s.store.getAgentState("r1", 1))!.status).toBe("escalated");
-    expect(await s.artifacts.exists("runs/r1/agent/v1/attempt-1.json")).toBe(true);
+    expect(await s.artifacts.exists("runs/r1/agent/v1/attempt-2.json")).toBe(true);
     expect(await auditTypes(s)).toContain("officer_agent_escalated");
     expect((await s.store.getRun("r1"))!.state).toBe("awaiting_officer");
   });

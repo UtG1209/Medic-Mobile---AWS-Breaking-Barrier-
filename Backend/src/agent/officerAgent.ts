@@ -21,6 +21,8 @@ import { applyPatch, type PatchOp } from "./patch.js";
 import { behaviourDiff, isBehaviourPreserving } from "./behaviourDiff.js";
 
 export const MAX_FIX_ATTEMPTS = 2;
+// lastError marker for a patch refused by the path guard; the next attempt is told which paths.
+const REFUSED_PREFIX = "refused_paths: ";
 
 const OpSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("add"), path: z.string().min(1), value: z.unknown() }),
@@ -194,7 +196,11 @@ export class OfficerAgent {
     }
     const guideline = [...picked.values()].join("\n").slice(0, 8000);
 
+    const refusedBefore = st.lastError?.startsWith(REFUSED_PREFIX) ? st.lastError.slice(REFUSED_PREFIX.length) : "";
     const prompt = [
+      ...(refusedBefore !== ""
+        ? ["Your previous patch was refused as a whole because it changed paths you may not change (listed in the refused_paths block). Send a patch that does not touch any of them; put any answer only in an open question's resolution text.", asDataBlock("refused_paths", refusedBefore)]
+        : []),
       asDataBlock("guideline_pages", guideline),
       asDataBlock("findings", targeted.map((f) => `${f.code} at ${f.subjects.map((s) => `${s.kind}:${s.id}`).join(",")}: ${f.message} ${JSON.stringify(f.source)}`).join("\n")),
       asDataBlock("model", JSON.stringify(loaded.raw)),
@@ -229,7 +235,11 @@ export class OfficerAgent {
     if (!opsAllowed(targeted.map((f) => f.code), ops, loaded.model)) {
       // Paths only, never values: which part of the model the AI tried to change (for CloudWatch and the audit trail).
       await this.audit(runId, "officer_agent_refused_paths", { n: base, attempt, paths: ops.map((o) => o.path).slice(0, 20).join(" ") });
-      return refuse("patch touches paths the agent may not change", false);
+      // One more attempt that names the refused paths (a real model wrote /meta/guideline/* despite the
+      // instructions); the guard stays all-or-nothing, and the attempt cap still ends in escalation.
+      const refusedPaths = ops.filter((o) => !opsAllowed(targeted.map((f) => f.code), [o], loaded.model)).map((o) => o.path);
+      await setState({ lastError: REFUSED_PREFIX + refusedPaths.slice(0, 20).join(" ") });
+      return refuse("patch touches paths the agent may not change", true);
     }
     const applied = applyPatch(loaded.raw, ops);
     if (!applied.ok) return refuse(`patch does not apply: ${applied.reason}`, true);
