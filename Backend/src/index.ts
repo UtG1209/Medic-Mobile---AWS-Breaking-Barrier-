@@ -27,6 +27,7 @@ import { createChecksStep } from "./steps/checks.js";
 import { createExtractStep } from "./steps/extract.js";
 import { createFillLogicStep } from "./steps/fillLogic.js";
 import { goldenNamingHint } from "./steps/goldenNames.js";
+import { withCrossDraft } from "./steps/crossDraft.js";
 import { defaultCheckInputs } from "./signoff/checkInputs.js";
 import { createIngestStep, createPdfInfoPageCount, defaultExec } from "./steps/ingest.js";
 import { parseModelValidator } from "./steps/logicModelValidator.js";
@@ -84,6 +85,19 @@ async function main(): Promise<void> {
     );
   };
 
+  // The extract and fill options are shared with the second draft (src/steps/crossDraft.ts), which runs the same steps again.
+  const extractOpts = { modelId: cfg.modelId, promptPath: cfg.extractPrompt };
+  const fillOpts = {
+    validator: parseModelValidator,
+    modelId: cfg.fillModelId,
+    promptPath: cfg.fillPrompt,
+    // The ids the confirmed test cases use, from the same source the checks read (the run's file, else the bundled one).
+    namingHint: async (runId: string) => goldenNamingHint((await defaultCheckInputs(artifacts)(runId)).goldenCases),
+  };
+  const extractStep = createExtractStep(extractOpts);
+  const fillStep = createFillLogicStep(fillOpts);
+  const checksStep = cfg.scoring ? withScoring(createChecksStep(), { ...cfg.scoring, region: cfg.region }) : createChecksStep();
+
   const orchestrator = new Orchestrator({
     store,
     artifacts,
@@ -97,19 +111,14 @@ async function main(): Promise<void> {
         maxPages: cfg.maxPages,
         pdfPageCount: createPdfInfoPageCount(),
       }),
-      createExtractStep({ modelId: cfg.modelId, promptPath: cfg.extractPrompt }),
-      createFillLogicStep({
-        validator: parseModelValidator,
-        modelId: cfg.fillModelId,
-        promptPath: cfg.fillPrompt,
-        // The ids the confirmed test cases use, from the same source the checks read (the run's file, else the bundled one).
-        namingHint: async (runId) => goldenNamingHint((await defaultCheckInputs(artifacts)(runId)).goldenCases),
-      }),
+      extractStep,
+      fillStep,
       // Automatic checks on version 1 (BR-11); the run then waits for the program officer (DEC-019).
       // With JUDGE_MODEL_ID set, quote-support scoring runs after them (advisory; a failure never stops the run).
-      cfg.scoring
-        ? withScoring(createChecksStep(), { ...cfg.scoring, region: cfg.region })
-        : createChecksStep(),
+      // Before them, a second independent draft is made for the "two drafts agree" check (advisory too).
+      cfg.crossDraft.enabled
+        ? withCrossDraft(checksStep, { extract: createExtractStep(extractOpts), fill: createFillLogicStep(fillOpts), suppliedElsewhere: cfg.crossDraft.suppliedElsewhere })
+        : checksStep,
     ],
     finalState: "awaiting_officer",
     onFinalState: triggerAgent,
