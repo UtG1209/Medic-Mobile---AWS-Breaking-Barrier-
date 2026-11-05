@@ -39,6 +39,19 @@ describe("LLM06 excessive agency: ops must match targeted findings", () => {
     expect(opsAllowed(["EMPTY_QUOTE"], [{ path: "/questions/0/source/0/quote" }])).toBe(true);
     expect(opsAllowed(["EMPTY_QUOTE"], [{ path: "/questions/0/source/0/quote" }, { path: "/rules/0/priority" }])).toBe(false);
   });
+
+  it("a citation under an open question is fixable for the citation codes only (real run 44b9b3bb: Q10 quote)", () => {
+    const model = { open_questions: Array.from({ length: 10 }, () => ({ route_to: "clinician" })) };
+    const quote = [{ op: "replace", path: "/open_questions/9/source/4/quote", value: "Not able to drink or feed any- thing" }];
+    expect(opsAllowed(["HALLUCINATED_CITATION"], quote, model)).toBe(true);
+    expect(opsAllowed(["EMPTY_QUOTE", "QUOTE_TOO_SHORT"], quote, model)).toBe(true);
+    // Not for a code that only allows open question bookkeeping, nor for other fields of an open question.
+    expect(opsAllowed(["TEAM_TEXT_TO_CONFIRM"], quote, model)).toBe(false);
+    for (const path of ["/open_questions/9/route_to", "/open_questions/9/question", "/open_questions/9/sourcex", "/open_questions/9", "/open_questions"]) {
+      expect(opsAllowed(["HALLUCINATED_CITATION"], [{ op: "replace", path, value: "x" }], model), path).toBe(false);
+    }
+    expect(opsAllowed(["HALLUCINATED_CITATION"], [{ op: "replace", path: "/rules/0/source/0/quote", value: "x" }, { op: "replace", path: "/open_questions/9/source/4/quote", value: "x" }], model)).toBe(true);
+  });
 });
 
 describe("LLM10 unbounded consumption", () => {
