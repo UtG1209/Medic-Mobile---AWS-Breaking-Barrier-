@@ -52,7 +52,7 @@ export function CheckBar({ stages, open, setOpen, onSelect }: { stages: Stage[];
               <span className={"cico " + s.status}><Icon name={ICON[s.status]} size={22} fill={s.status === "pass"} /></span>
               <span className="cname">{s.name}</span>
               <span className="cdesc">{s.desc}</span>
-              <span className="cstat">{LABEL[s.status] + (n && (s.status === "fail" || s.status === "warn") ? " · " + n : "")}<span className="cmore">{on ? "Hide details" : "Details"}</span></span>
+              <span className="cstat">{s.headline ? LABEL[s.status] + " · " + s.headline : LABEL[s.status] + (n && (s.status === "fail" || s.status === "warn") ? " · " + n : "")}<span className="cmore">{on ? "Hide details" : "Details"}</span></span>
             </button>
             <div className="cpop" role="region" aria-label={s.name}>
               <div className="note">{s.summary}</div>

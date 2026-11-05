@@ -12,6 +12,8 @@ export interface Part { name: string; ok: boolean; text: string }
 export interface Stage {
   key: CheckKey; n: string; name: string; desc: string; asks: string; owner: "agent" | "clinician";
   status: StageStatus; summary: string; issues: Check[]; parts?: Part[]; uses?: string;
+  /** A short result for the card in place of "To look at · N" (the cross check: how alike the two drafts are). */
+  headline?: string;
 }
 
 /* name and desc are the plain-language labels the clinician sees; asks is the technical question behind each. */
@@ -107,10 +109,9 @@ const CROSS_RANK: Record<string, number> = {
   CROSS_CHECK_QUESTION_DIFFERS: 4, CROSS_CHECK_QUESTION_ONLY_IN_ONE: 4, CROSS_CHECK_ACTION_DIFFERS: 5,
   CROSS_CHECK_OPEN_QUESTION_ONLY_IN_ONE: 9,
 };
-/** The card lists at least this many differences, the most important first; the rest are counted in its summary. Every group of
-    children who get a different result is listed (up to CROSS_MAX), because those are what a clinician must look at. */
-export const CROSS_SHOWN = 5;
-export const CROSS_MAX = 8;
+/** The card lists this many differences, the most important first; how alike the drafts are is the headline, and the summary
+    says how many more there are. The full list stays in the backend's findings. */
+export const CROSS_SHOWN = 3;
 const crossRank = (code: string): number => CROSS_RANK[code] ?? 6;
 const plural = (n: number, w: string): string => n + " " + w + (n === 1 ? "" : "s");
 
@@ -120,8 +121,7 @@ function backendCross(c: CrossFlags): Omit<Stage, "key" | "n" | "name" | "desc" 
   if (c.comparison === "not_run")
     return { status: "missing", issues: [], uses, summary: "Not run: the backend has no second draft for this run." };
   const flags = c.flags.filter(f => f.severity !== "info").sort((a, b) => crossRank(a.code) - crossRank(b.code));
-  const real = flags.filter(f => crossRank(f.code) === 0).length;
-  const keep = Math.max(CROSS_SHOWN, Math.min(real, CROSS_MAX));
+  const keep = CROSS_SHOWN;
   const shown = flags.slice(0, keep);
   const issues: Check[] = shown.map(f => ({ kind: "cross", sev: "warning", id: subjectItem(f.subjects[0]), text: f.messages.clinician }));
   if (c.comparison === "second_draft_invalid")
@@ -129,14 +129,19 @@ function backendCross(c: CrossFlags): Omit<Stage, "key" | "n" | "name" | "desc" 
   const s = c.summary;
   const rest = flags.length - shown.length;
   const quiet = flags.slice(keep).filter(f => crossRank(f.code) >= 9).length; // open questions only one draft raised
-  const head = s.compared === undefined
-    ? (flags.length ? plural(flags.length, "difference") + " between the drafts" : "The drafts agree")
-    : (s.compared - (s.differing ?? 0)).toLocaleString("en-US") + " of " + s.compared.toLocaleString("en-US") + " sample patients agree"
-      + (s.differing ? "; " + s.differing.toLocaleString("en-US") + " differ" + (s.groups ? ", in " + plural(s.groups, "way") : "") : "");
+  // How alike the drafts are: the share of the sample patients that get the same result in both. Never "100%" while any differ.
+  const same = s.compared !== undefined && s.compared > 0 ? s.compared - (s.differing ?? 0) : undefined;
+  const raw = same !== undefined && s.compared ? (same / s.compared) * 100 : undefined;
+  const pct = raw === undefined ? undefined : raw === 100 ? 100 : raw >= 99 ? Math.floor(raw * 10) / 10 : Math.round(raw);
+  const headline = pct !== undefined ? (Number.isInteger(pct) ? pct : pct.toFixed(1)) + "% alike" : undefined;
+  const head = same !== undefined && s.compared !== undefined
+    ? "In " + same.toLocaleString("en-US") + " of " + s.compared.toLocaleString("en-US") + " sample patients both drafts give the same result"
+      + (s.differing ? "; " + s.differing.toLocaleString("en-US") + " differ" + (s.groups ? ", in " + plural(s.groups, "way") : "") : "")
+    : (flags.length ? plural(flags.length, "difference") + " between the drafts" : "The drafts agree");
   const tail = rest > 0
-    ? ". Showing the " + shown.length + " most important of " + flags.length + " differences" + (quiet > 0 ? "; " + quiet + " of the other " + rest + " are open questions that only one draft raised" : "")
+    ? ". The " + shown.length + " clearest differences are listed; " + rest + " smaller one" + (rest === 1 ? " is" : "s are") + " not" + (quiet > 0 ? " (" + quiet + " of them open questions that only one draft raised)" : "")
     : "";
-  return { status: statusOf(issues), issues, uses, summary: head + tail };
+  return { status: statusOf(issues), issues, uses, summary: head + tail, ...(headline !== undefined ? { headline } : {}) };
 }
 
 const cache = new WeakMap<Spec, { ev: Evidence; stages: Stage[] }>();
